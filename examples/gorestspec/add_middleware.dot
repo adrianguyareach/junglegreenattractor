@@ -1,0 +1,41 @@
+digraph AddMiddleware {
+    graph [
+        goal="Add $middleware_type middleware to the Go REST API. Follow the spec: if it requires a dependency (e.g. token verifier), define an interface and inject the concrete implementation in main.go. Place shared middleware in internal/platform/middleware/.",
+        label="Add Middleware"
+    ]
+    rankdir=LR
+    node [shape=box, timeout="60s"]
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare,  label="Exit"]
+
+    analyze [
+        label="Analyze Router Setup",
+        prompt="Read main.go and identify where gin.New() or gin.Default() is called and which middleware is already registered. Report the current middleware stack."
+    ]
+
+    write_middleware [
+        label="Write Middleware",
+        prompt="For $goal:\n1. Create internal/platform/middleware/$middleware_type.go\n2. Define a gin.HandlerFunc factory function\n3. If external dependencies are needed (e.g. TokenVerifier for auth), define an interface in the same file and accept it as a parameter\n4. The middleware must not contain business logic"
+    ]
+
+    wire_main [
+        label="Wire in main.go",
+        prompt="For $goal, update main.go:\n1. Import the middleware package\n2. If the middleware has dependencies, instantiate the concrete implementation\n3. Add the middleware to the router.Use() chain in the correct order (recovery first, then request ID, then logging, then auth/CORS/rate-limit)\n4. Apply globally or to specific route groups as appropriate"
+    ]
+
+    write_tests [
+        label="Write Tests",
+        prompt="For $goal, write tests in internal/platform/middleware/${middleware_type}_test.go:\n1. Use httptest.NewRecorder + gin.CreateTestContext\n2. Test the happy path (middleware allows request through)\n3. Test the rejection path (middleware blocks invalid request)\n4. Mock any interfaces the middleware depends on"
+    ]
+
+    validate [
+        label="Validate",
+        prompt="go mod tidy && golangci-lint run ./... && go build ./... && go test -short ./...\nFix all issues.",
+        goal_gate=true,
+        max_retries=2
+    ]
+
+    start -> analyze -> write_middleware -> wire_main -> write_tests -> validate -> exit [condition="outcome=success"]
+    validate -> write_middleware [condition="outcome!=success"]
+}

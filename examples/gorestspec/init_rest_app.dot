@@ -1,0 +1,62 @@
+digraph InitRestApp {
+    graph [
+        goal="Initialize a new Go REST API following the Clean Architecture spec in README.md. The project module is $module_name. The first domain module is $first_module (e.g. user). Use Gin, PostgreSQL 16, pgx/v5, slog, and golang-migrate. Every file must satisfy the Golden Rules.",
+        label="Initialize REST Application"
+    ]
+    rankdir=LR
+    node [shape=box, timeout="120s"]
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare,  label="Exit"]
+
+    scaffold_project [
+        label="Scaffold Project Skeleton",
+        prompt="Create the top-level project structure for $goal:\n1. go.mod with module path and Go 1.22+\n2. Folder tree: internal/platform/db/, internal/platform/config/, internal/platform/logger/, internal/$first_module/, pkg/apperr/, pkg/response/, migrations/\n3. .gitignore (binaries, .env, vendor)\n4. Dockerfile (multi-stage Alpine build)\n5. docker-compose.yml (postgres + app)\n6. .golangci.yml with standard linters enabled\nDo NOT write any Go source files yet — only the directory structure, go.mod, and infra config files."
+    ]
+
+    write_platform [
+        label="Write Platform Layer",
+        prompt="For $goal, implement the shared platform packages:\n1. internal/platform/db/postgres.go — NewPostgresPool with pgxpool, sensible pool defaults, ping check\n2. internal/platform/config/config.go — Config struct loaded from env vars (PORT, DATABASE_URL, LOG_LEVEL), validate required fields\n3. internal/platform/logger/logger.go — slog JSON handler factory\n4. pkg/apperr/apperr.go — sentinel errors (ErrNotFound, ErrConflict, ErrUnauthorized, ErrForbidden, ErrValidation) and a typed Error struct with Unwrap\n5. pkg/response/response.go — JSON envelope with OK and Err helpers for Gin\nFollow the spec exactly. No business logic in platform."
+    ]
+
+    write_domain [
+        label="Write First Domain Module",
+        prompt="For $goal, create the domain module internal/$first_module/:\n1. domain.go — entity struct (NO json tags), sentinel domain errors, constructor function with invariants\n2. repository.go — small, segregated interfaces (one capability = one interface), context.Context as first param\n3. usecase.go — one struct per use case, accept interfaces via constructor, no framework imports\n4. handler.go — Gin handlers, private request/response DTOs with json+binding tags, mapper functions DTO<>domain, RegisterRoutes method, error mapper function\n5. postgres_repo.go — implements all repository interfaces, pgx queries, maps pgx.ErrNoRows to domain errors\nEnsure vertical slice structure."
+    ]
+
+    write_migrations [
+        label="Write SQL Migrations",
+        prompt="For $goal, create migration files for the $first_module module:\n1. migrations/000001_create_<table>.up.sql — CREATE TABLE with appropriate columns, indexes\n2. migrations/000001_create_<table>.down.sql — DROP TABLE\nUse TEXT for IDs, TIMESTAMPTZ for timestamps, match the domain entity fields exactly."
+    ]
+
+    write_main [
+        label="Wire main.go",
+        prompt="For $goal, write main.go as the composition root:\n1. Load config\n2. Initialize slog logger and set as default\n3. Create postgres pool with defer Close\n4. Wire $first_module: repo -> usecases -> handler\n5. Create Gin router with Recovery, RequestID, and logging middleware\n6. Register routes under /api/v1\n7. Create http.Server with timeouts\n8. Graceful shutdown on SIGINT/SIGTERM\nAll concrete wiring here. No init() globals."
+    ]
+
+    write_tests [
+        label="Write Test Suite",
+        prompt="For $goal, write tests for the $first_module module:\n1. domain_test.go — test entity constructor valid/invalid cases\n2. usecase_test.go — test each use case with testify mocks of the segregated interfaces\n3. postgres_repo_test.go — integration tests against real Postgres, skip with testing.Short()\nFollow the testing strategy from the spec: small mocks for small interfaces."
+    ]
+
+    validate [
+        label="Validate Build",
+        prompt="Run these commands and fix any issues:\n1. go mod tidy\n2. golangci-lint run ./...\n3. go build ./...\n4. go test -short ./...\nIf anything fails, fix the code until all four commands pass cleanly.",
+        goal_gate=true,
+        max_retries=3
+    ]
+
+    check [shape=diamond, label="Build & tests green?"]
+
+    review [
+        shape=hexagon,
+        label="Review Scaffold",
+        type="wait.human"
+    ]
+
+    start -> scaffold_project -> write_platform -> write_domain -> write_migrations -> write_main -> write_tests -> validate -> check
+    check -> review     [label="Yes", condition="outcome=success"]
+    check -> write_main [label="No",  condition="outcome!=success"]
+    review -> exit      [label="[A] Approve"]
+    review -> validate  [label="[F] Fix issues"]
+}

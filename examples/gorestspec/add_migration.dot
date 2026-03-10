@@ -1,0 +1,48 @@
+digraph AddMigration {
+    graph [
+        goal="Create and apply a new database migration: $migration_description. Follow the migration strategy in the spec. Use golang-migrate file naming conventions.",
+        label="Add Migration"
+    ]
+    rankdir=LR
+    node [shape=box, timeout="60s"]
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare,  label="Exit"]
+
+    analyze [
+        label="Check Migration State",
+        prompt="List files in migrations/ to determine the next sequence number. Check if docker-compose postgres is running. Report the next migration number and database status."
+    ]
+
+    write_migration [
+        label="Write Migration Files",
+        prompt="For $goal:\n1. Create migrations/NNNNNN_$slug.up.sql with the schema change\n2. Create migrations/NNNNNN_$slug.down.sql that cleanly reverses it\n3. Use IF NOT EXISTS / IF EXISTS guards\n4. Add appropriate indexes\n5. Use TIMESTAMPTZ for time columns, TEXT for IDs, BIGINT for money (cents)"
+    ]
+
+    dry_run [
+        label="Dry Run Validation",
+        prompt="Validate the SQL:\n1. Check syntax by running the up migration against the test database\n2. Immediately run the down migration to verify reversibility\n3. Run the up migration again to confirm idempotency\nReport any errors.",
+        max_retries=2
+    ]
+
+    check [shape=diamond, label="Migration valid?"]
+
+    apply [
+        label="Apply Migration",
+        prompt="Run: migrate -path migrations -database \"$DATABASE_URL\" up\nVerify the migration was applied by checking the schema_migrations table.",
+        goal_gate=true
+    ]
+
+    review [
+        shape=hexagon,
+        label="Review Migration",
+        type="wait.human"
+    ]
+
+    start -> analyze -> write_migration -> dry_run -> check
+    check -> review          [label="Valid",   condition="outcome=success"]
+    check -> write_migration [label="Invalid", condition="outcome!=success"]
+    review -> apply [label="[A] Apply"]
+    review -> exit  [label="[S] Skip — apply later"]
+    apply -> exit
+}

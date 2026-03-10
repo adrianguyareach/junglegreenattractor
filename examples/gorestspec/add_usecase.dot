@@ -1,0 +1,56 @@
+digraph AddUsecase {
+    graph [
+        goal="Add a new usecase '$usecase_name' to the existing module internal/$module_name/. Follow the Clean Architecture spec. If new repository capabilities are needed, add new segregated interfaces — do NOT bloat existing ones. Add the handler endpoint, wire in main.go, and write tests.",
+        label="Add Usecase"
+    ]
+    rankdir=LR
+    node [shape=box, timeout="60s"]
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare,  label="Exit"]
+
+    analyze [
+        label="Analyze Module",
+        prompt="Read internal/$module_name/ (domain.go, repository.go, usecase.go, handler.go, postgres_repo.go) and main.go. Identify:\n1. Existing entity fields and domain errors\n2. Existing repository interfaces\n3. Existing usecases and how they are wired\n4. Existing handler routes\nReport what already exists so we do not duplicate or break anything."
+    ]
+
+    update_repo_interfaces [
+        label="Add Repo Interface (if needed)",
+        prompt="For $goal: if the usecase '$usecase_name' requires a persistence capability not covered by existing interfaces in repository.go, add a NEW small interface (do NOT add methods to existing interfaces). If no new capability is needed, report that and move on."
+    ]
+
+    write_usecase [
+        label="Write Usecase",
+        prompt="For $goal, add a new usecase struct and constructor to usecase.go:\n- Struct name derived from '$usecase_name'\n- Accept only the segregated interfaces it needs\n- Implement the Execute method with business logic\n- Return domain types and domain errors only"
+    ]
+
+    update_handler [
+        label="Update Handler",
+        prompt="For $goal, update handler.go:\n1. Add request/response DTOs if needed\n2. Add a new Gin handler method\n3. Add the route in RegisterRoutes\n4. Update the Handler struct and NewHandler constructor to accept the new usecase\n5. Update mapXxxError if new domain errors were introduced"
+    ]
+
+    update_repo_impl [
+        label="Update Postgres Repo",
+        prompt="For $goal: if a new repository interface was added, implement it in postgres_repo.go with a SQL query. If no new interface was needed, skip this step."
+    ]
+
+    update_main [
+        label="Update main.go Wiring",
+        prompt="For $goal, update main.go:\n1. Instantiate the new usecase with the appropriate repo interfaces\n2. Pass it to the updated NewHandler constructor\nDo not break existing wiring."
+    ]
+
+    write_tests [
+        label="Write Tests",
+        prompt="For $goal:\n1. Add usecase test cases to usecase_test.go — mock only the interfaces the new usecase uses\n2. If a new repo method was added, add an integration test to postgres_repo_test.go\n3. Verify existing tests still pass"
+    ]
+
+    validate [
+        label="Validate",
+        prompt="go mod tidy && golangci-lint run ./... && go build ./... && go test -short ./...\nFix all issues.",
+        goal_gate=true,
+        max_retries=2
+    ]
+
+    start -> analyze -> update_repo_interfaces -> write_usecase -> update_handler -> update_repo_impl -> update_main -> write_tests -> validate -> exit [condition="outcome=success"]
+    validate -> update_handler [condition="outcome!=success"]
+}

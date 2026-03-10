@@ -1,0 +1,67 @@
+digraph FullFeature {
+    graph [
+        goal="Implement the feature: $feature_description. Follow the Clean Architecture spec. Create or update modules, migrations, middleware, and tests as needed. The result must compile, pass linting, and pass all tests.",
+        label="Full Feature Implementation",
+        default_max_retry=3
+    ]
+    rankdir=TB
+    node [shape=box, timeout="120s"]
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare,  label="Exit"]
+
+    plan [
+        label="Plan Feature",
+        prompt="For $goal, analyze the codebase and produce a plan:\n1. Which modules need to be created or modified?\n2. Which new domain entities, repository interfaces, and usecases are needed?\n3. Are new migrations required?\n4. Is new middleware needed?\n5. What are the API endpoints (method, path, request/response)?\nOutput a numbered step-by-step implementation plan."
+    ]
+
+    review_plan [
+        shape=hexagon,
+        label="Review Plan",
+        type="wait.human"
+    ]
+
+    implement_domain [
+        label="Implement Domain & Repos",
+        prompt="Execute the plan for $goal — domain layer:\n1. Create/update domain.go with entities, errors, constructors\n2. Create/update repository.go with segregated interfaces\n3. Create/update postgres_repo.go implementations\n4. Create/update migration SQL files"
+    ]
+
+    implement_business [
+        label="Implement Usecases & Handlers",
+        prompt="Execute the plan for $goal — application layer:\n1. Create/update usecase.go with usecase structs\n2. Create/update handler.go with DTOs, mappers, Gin handlers, routes\n3. Update main.go wiring for new/changed components"
+    ]
+
+    implement_infra [
+        label="Implement Infrastructure",
+        prompt="Execute the plan for $goal — infrastructure:\n1. Add any new middleware if the plan calls for it\n2. Update config if new env vars are needed\n3. Update docker-compose.yml if new services are needed"
+    ]
+
+    write_tests [
+        label="Write Tests",
+        prompt="For $goal, write comprehensive tests:\n1. Domain unit tests for all new/changed entities\n2. Usecase tests with mocked interfaces for each new/changed usecase\n3. Repo integration tests for new/changed queries\n4. Handler tests if complex mapping logic exists"
+    ]
+
+    validate [
+        label="Validate Everything",
+        prompt="go mod tidy && golangci-lint run ./... && go build ./... && go test -short ./...\nFix ALL issues. Report the final state.",
+        goal_gate=true,
+        max_retries=5
+    ]
+
+    check [shape=diamond, label="All green?"]
+
+    review_impl [
+        shape=hexagon,
+        label="Review Implementation",
+        type="wait.human"
+    ]
+
+    start -> plan -> review_plan
+    review_plan -> implement_domain  [label="[A] Approve plan"]
+    review_plan -> plan              [label="[R] Revise plan"]
+    implement_domain -> implement_business -> implement_infra -> write_tests -> validate -> check
+    check -> review_impl             [label="Yes", condition="outcome=success"]
+    check -> implement_business      [label="No",  condition="outcome!=success"]
+    review_impl -> exit              [label="[A] Approve — ship it"]
+    review_impl -> implement_domain  [label="[F] Fix issues"]
+}

@@ -1,0 +1,15 @@
+digraph SimpleLinear {
+    graph [
+        goal="Run a simple linear pipeline to verify Attractor works.",
+        label="Simple Linear Test"
+    ]
+    rankdir=LR
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+
+    step1 [label="Step One", prompt="Perform the first step of: $goal"]
+    step2 [label="Step Two", prompt="Perform the second step of: $goal"]
+
+    start -> step1 -> step2 -> exit
+}

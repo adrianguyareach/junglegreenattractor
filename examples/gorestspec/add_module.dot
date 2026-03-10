@@ -1,0 +1,69 @@
+digraph AddModule {
+    graph [
+        goal="Add a new vertical-slice module named $module_name to the existing Go REST API. Follow the Clean Architecture spec in README.md. The entity has these fields: $entity_fields. Create all layer files, migrations, and tests. Wire the module into main.go. Respect the Golden Rules.",
+        label="Add New Module"
+    ]
+    rankdir=LR
+    node [shape=box, timeout="90s"]
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare,  label="Exit"]
+
+    analyze [
+        label="Analyze Existing Codebase",
+        prompt="Read the current project structure and main.go to understand:\n1. The Go module path from go.mod\n2. Which modules already exist under internal/\n3. How main.go wires existing modules (repo -> usecase -> handler -> router)\n4. The current migration numbering sequence in migrations/\nReport your findings so subsequent steps are consistent."
+    ]
+
+    write_domain [
+        label="Write Domain Layer",
+        prompt="For $goal, create internal/$module_name/domain.go:\n1. Entity struct with the fields: $entity_fields — NO json/db tags\n2. Sentinel domain errors (ErrNotFound, ErrInvalid, ErrAlreadyExists as appropriate)\n3. Constructor function NewXxx that validates invariants and generates a UUID ID + timestamps\nThe domain must have zero external imports beyond stdlib and pkg/apperr."
+    ]
+
+    write_repository [
+        label="Write Repository Interfaces",
+        prompt="For $goal, create internal/$module_name/repository.go:\nDefine small, segregated interfaces — one per persistence capability:\n- Creator (save a new entity)\n- Finder by ID\n- Finder by natural key (if entity has one)\n- Lister (e.g. by parent ID)\nEach method takes context.Context first and returns domain types."
+    ]
+
+    write_usecase [
+        label="Write Usecases",
+        prompt="For $goal, create internal/$module_name/usecase.go:\nImplement one usecase struct per operation:\n- Create/Register usecase\n- GetByID usecase\n- List usecase\nEach accepts segregated repository interfaces via constructor. No gin, pgx, http imports."
+    ]
+
+    write_handler [
+        label="Write Handler + DTOs",
+        prompt="For $goal, create internal/$module_name/handler.go:\n1. Request DTOs (private structs) with json + binding tags\n2. Response DTOs (private structs) with json tags — never expose sensitive fields\n3. Mapper functions: toXxxDomain, toXxxResponse\n4. Handler struct accepting usecase pointers\n5. RegisterRoutes(rg *gin.RouterGroup) method\n6. One Gin handler per endpoint\n7. mapXxxError function: domain errors -> HTTP status codes\nUse the pkg/response envelope for all responses."
+    ]
+
+    write_repo_impl [
+        label="Write Postgres Repository",
+        prompt="For $goal, create internal/$module_name/postgres_repo.go:\n1. PostgresRepo struct with pgxpool.Pool\n2. NewPostgresRepo constructor\n3. Implement every interface from repository.go\n4. Map pgx.ErrNoRows -> domain ErrNotFound\n5. Wrap other pgx errors with fmt.Errorf context\n6. One SQL query per method, parameterised ($1, $2, ...)"
+    ]
+
+    write_migration [
+        label="Write SQL Migration",
+        prompt="For $goal, create the next migration files in migrations/:\n1. NNNNNN_create_$module_name.up.sql — CREATE TABLE matching the domain entity fields, appropriate indexes, foreign keys if needed\n2. NNNNNN_create_$module_name.down.sql — DROP TABLE\nUse the next sequence number after existing migrations."
+    ]
+
+    wire_main [
+        label="Wire into main.go",
+        prompt="For $goal, update main.go:\n1. Import the new module package\n2. Instantiate NewPostgresRepo(pool)\n3. Instantiate each usecase with the repo (same struct, multiple interfaces)\n4. Instantiate NewHandler with usecases\n5. Call handler.RegisterRoutes(v1)\nKeep existing wiring intact. Place the new block after the last module."
+    ]
+
+    write_tests [
+        label="Write Tests",
+        prompt="For $goal, create test files in internal/$module_name/:\n1. domain_test.go — valid/invalid constructor, edge cases\n2. usecase_test.go — mock each segregated interface with testify, test happy path + error paths\n3. postgres_repo_test.go — integration test (skip on -short), create-then-find round trip, not-found case"
+    ]
+
+    validate [
+        label="Validate",
+        prompt="Run and fix until green:\n1. go mod tidy\n2. golangci-lint run ./...\n3. go build ./...\n4. go test -short ./...\nFix all errors before reporting success.",
+        goal_gate=true,
+        max_retries=3
+    ]
+
+    check [shape=diamond, label="All green?"]
+
+    start -> analyze -> write_domain -> write_repository -> write_usecase -> write_handler -> write_repo_impl -> write_migration -> wire_main -> write_tests -> validate -> check
+    check -> exit          [label="Yes", condition="outcome=success"]
+    check -> write_handler [label="No",  condition="outcome!=success"]
+}
