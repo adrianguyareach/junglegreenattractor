@@ -1,28 +1,25 @@
+// Package engine implements the core pipeline execution loop. It traverses
+// a DOT graph node-by-node, executing handlers, managing retries, and
+// persisting checkpoints and status files along the way.
 package engine
 
 import (
-	"encoding/json"
 	"fmt"
-	"math"
-	"math/rand"
 	"os"
 	"path/filepath"
-	"sort"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/adrianguyareach/junglegreenattractor/internal/dot"
 	"github.com/adrianguyareach/junglegreenattractor/internal/event"
 )
 
-// Handler interface duplicated here to avoid import cycle.
-// The actual implementation lives in handler package.
+// NodeHandler is the interface every node executor must satisfy.
+// Defined in the engine package to avoid an import cycle with handler.
 type NodeHandler interface {
 	Execute(node *dot.Node, ctx *Context, graph *dot.Graph, logsRoot string) (*Outcome, error)
 }
 
-// HandlerResolver resolves a handler for a node.
+// HandlerResolver maps a graph node to its concrete handler.
 type HandlerResolver interface {
 	Resolve(node *dot.Node) NodeHandler
 }
@@ -56,11 +53,12 @@ func (r *Runner) Run() (*Outcome, error) {
 	ctx := NewContext()
 	mirrorGraphAttributes(r.Graph, ctx)
 
-	if err := os.MkdirAll(r.Config.LogsRoot, 0755); err != nil {
+	if err := os.MkdirAll(r.Config.LogsRoot, dirPermissions); err != nil {
 		return nil, fmt.Errorf("create logs root: %w", err)
 	}
-
-	writeManifest(r.Config.LogsRoot, r.Graph)
+	if err := writeManifest(r.Config.LogsRoot, r.Graph); err != nil {
+		ctx.AppendLog(fmt.Sprintf("WARNING: failed to write manifest: %v", err))
+	}
 
 	r.Emitter.Emit(event.Event{
 		Kind:    event.PipelineStarted,
@@ -73,116 +71,48 @@ func (r *Runner) Run() (*Outcome, error) {
 		return nil, fmt.Errorf("no start node found in graph")
 	}
 
+	return r.runLoop(ctx, startNode)
+}
+
+func (r *Runner) runLoop(ctx *Context, startNode *dot.Node) (*Outcome, error) {
 	var completedNodes []string
 	nodeOutcomes := make(map[string]*Outcome)
 	nodeRetries := make(map[string]int)
-
 	currentNode := startNode
 	var lastOutcome *Outcome
 	stepIndex := 0
 
 	for {
-		node := currentNode
-
-		// Terminal node check
-		if isTerminal(node) {
-			gateOK, failedGate := checkGoalGates(r.Graph, nodeOutcomes)
-			if !gateOK && failedGate != nil {
-				retryTarget := getRetryTarget(failedGate, r.Graph)
-				if retryTarget != "" {
-					if target, ok := r.Graph.Nodes[retryTarget]; ok {
-						currentNode = target
-						continue
-					}
-				}
-				return &Outcome{
-					Status:        StatusFail,
-					FailureReason: fmt.Sprintf("Goal gate unsatisfied for node %q and no retry target", failedGate.ID),
-				}, nil
+		if isTerminal(currentNode) {
+			if failed := r.handleGoalGates(currentNode, nodeOutcomes); failed != nil {
+				return failed, nil
 			}
 			break
 		}
 
-		// Sequential stage directory so folders sort in execution order (e.g. 01_start, 02_scaffold_project)
 		stepIndex++
-		stageDir := filepath.Join(r.Config.LogsRoot, fmt.Sprintf("%03d_%s", stepIndex, node.ID))
-		if err := os.MkdirAll(stageDir, 0755); err != nil {
+		stageDir := filepath.Join(r.Config.LogsRoot, fmt.Sprintf("%03d_%s", stepIndex, currentNode.ID))
+		if err := os.MkdirAll(stageDir, dirPermissions); err != nil {
 			return nil, fmt.Errorf("create stage dir: %w", err)
 		}
 
-		// Execute node handler with retry
-		r.Emitter.Emit(event.Event{
-			Kind:   event.StageStarted,
-			NodeID: node.ID,
-			Data:   map[string]any{"label": node.Attr("label", node.ID)},
-		})
-
-		retryPolicy := buildRetryPolicy(node, r.Graph)
-		outcome, err := r.executeWithRetry(node, ctx, stageDir, retryPolicy, nodeRetries)
+		outcome, err := r.executeStage(currentNode, ctx, stageDir, nodeRetries)
 		if err != nil {
-			r.Emitter.Emit(event.Event{
-				Kind:    event.PipelineFailed,
-				NodeID:  node.ID,
-				Message: err.Error(),
-			})
-			return nil, fmt.Errorf("executing node %q: %w", node.ID, err)
+			return nil, err
 		}
 
-		completedNodes = append(completedNodes, node.ID)
-		nodeOutcomes[node.ID] = outcome
+		completedNodes = append(completedNodes, currentNode.ID)
+		nodeOutcomes[currentNode.ID] = outcome
 		lastOutcome = outcome
 
-		ctx.ApplyUpdates(outcome.ContextUpdates)
-		ctx.Set("outcome", string(outcome.Status))
-		if outcome.PreferredLabel != "" {
-			ctx.Set("preferred_label", outcome.PreferredLabel)
+		r.recordOutcome(ctx, currentNode, outcome, stageDir, completedNodes, nodeRetries)
+
+		nextNode, done, err := r.advance(currentNode, outcome, ctx)
+		if err != nil {
+			return outcome, err
 		}
-		ctx.Set("current_node", node.ID)
-
-		// Write status to stage directory
-		writeStatusFile(stageDir, outcome)
-
-		if outcome.Status == StatusSuccess || outcome.Status == StatusPartialSuccess {
-			r.Emitter.Emit(event.Event{
-				Kind:   event.StageCompleted,
-				NodeID: node.ID,
-				Data:   map[string]any{"status": string(outcome.Status)},
-			})
-		} else {
-			r.Emitter.Emit(event.Event{
-				Kind:    event.StageFailed,
-				NodeID:  node.ID,
-				Message: outcome.FailureReason,
-			})
-		}
-
-		// Save checkpoint
-		cp := NewCheckpoint(ctx, node.ID, completedNodes, nodeRetries)
-		if err := cp.Save(r.Config.LogsRoot); err != nil {
-			// Non-fatal
-			ctx.AppendLog(fmt.Sprintf("WARNING: failed to save checkpoint: %v", err))
-		}
-		r.Emitter.Emit(event.Event{Kind: event.CheckpointSaved, NodeID: node.ID})
-
-		// Select next edge
-		nextEdge := selectEdge(node, outcome, ctx, r.Graph)
-		if nextEdge == nil {
-			if outcome.Status == StatusFail {
-				return outcome, fmt.Errorf("stage %q failed with no outgoing fail edge", node.ID)
-			}
+		if done {
 			break
-		}
-
-		// Handle loop_restart
-		if nextEdge.Attr("loop_restart", "") == "true" {
-			// Restart with fresh logs directory
-			return r.Run()
-		}
-
-		// Advance
-		nextNode, ok := r.Graph.Nodes[nextEdge.To]
-		if !ok {
-			return nil, fmt.Errorf("edge target node %q not found", nextEdge.To)
 		}
 		currentNode = nextNode
 	}
@@ -199,6 +129,105 @@ func (r *Runner) Run() (*Outcome, error) {
 	return lastOutcome, nil
 }
 
+func (r *Runner) handleGoalGates(node *dot.Node, outcomes map[string]*Outcome) *Outcome {
+	gateOK, failedGate := checkGoalGates(r.Graph, outcomes)
+	if gateOK || failedGate == nil {
+		return nil
+	}
+	retryTarget := getRetryTarget(failedGate, r.Graph)
+	if retryTarget != "" {
+		if _, ok := r.Graph.Nodes[retryTarget]; ok {
+			return nil
+		}
+	}
+	return &Outcome{
+		Status:        StatusFail,
+		FailureReason: fmt.Sprintf("Goal gate unsatisfied for node %q and no retry target", failedGate.ID),
+	}
+}
+
+func (r *Runner) executeStage(node *dot.Node, ctx *Context, stageDir string, nodeRetries map[string]int) (*Outcome, error) {
+	r.Emitter.Emit(event.Event{
+		Kind:   event.StageStarted,
+		NodeID: node.ID,
+		Data:   map[string]any{"label": node.Attr("label", node.ID)},
+	})
+
+	policy := buildRetryPolicy(node, r.Graph)
+	outcome, err := r.executeWithRetry(node, ctx, stageDir, policy, nodeRetries)
+	if err != nil {
+		r.Emitter.Emit(event.Event{
+			Kind:    event.PipelineFailed,
+			NodeID:  node.ID,
+			Message: err.Error(),
+		})
+		return nil, fmt.Errorf("executing node %q: %w", node.ID, err)
+	}
+	return outcome, nil
+}
+
+func (r *Runner) recordOutcome(ctx *Context, node *dot.Node, outcome *Outcome, stageDir string, completed []string, retries map[string]int) {
+	ctx.ApplyUpdates(outcome.ContextUpdates)
+	ctx.Set("outcome", string(outcome.Status))
+	if outcome.PreferredLabel != "" {
+		ctx.Set("preferred_label", outcome.PreferredLabel)
+	}
+	ctx.Set("current_node", node.ID)
+
+	if err := WriteStatusFile(stageDir, outcome); err != nil {
+		ctx.AppendLog(fmt.Sprintf("WARNING: failed to write status: %v", err))
+	}
+
+	r.emitStageResult(node, outcome)
+
+	cp := NewCheckpoint(ctx, node.ID, completed, retries)
+	if err := cp.Save(r.Config.LogsRoot); err != nil {
+		ctx.AppendLog(fmt.Sprintf("WARNING: failed to save checkpoint: %v", err))
+	}
+	r.Emitter.Emit(event.Event{Kind: event.CheckpointSaved, NodeID: node.ID})
+}
+
+func (r *Runner) emitStageResult(node *dot.Node, outcome *Outcome) {
+	if outcome.Status == StatusSuccess || outcome.Status == StatusPartialSuccess {
+		r.Emitter.Emit(event.Event{
+			Kind:   event.StageCompleted,
+			NodeID: node.ID,
+			Data:   map[string]any{"status": string(outcome.Status)},
+		})
+	} else {
+		r.Emitter.Emit(event.Event{
+			Kind:    event.StageFailed,
+			NodeID:  node.ID,
+			Message: outcome.FailureReason,
+		})
+	}
+}
+
+func (r *Runner) advance(node *dot.Node, outcome *Outcome, ctx *Context) (*dot.Node, bool, error) {
+	nextEdge := selectEdge(node, outcome, ctx, r.Graph)
+	if nextEdge == nil {
+		if outcome.Status == StatusFail {
+			return nil, false, fmt.Errorf("stage %q failed with no outgoing fail edge", node.ID)
+		}
+		return nil, true, nil
+	}
+
+	if nextEdge.Attr("loop_restart", "") == "true" {
+		restarted, err := r.Run()
+		if err != nil {
+			return nil, false, err
+		}
+		_ = restarted
+		return nil, true, nil
+	}
+
+	nextNode, ok := r.Graph.Nodes[nextEdge.To]
+	if !ok {
+		return nil, false, fmt.Errorf("edge target node %q not found", nextEdge.To)
+	}
+	return nextNode, false, nil
+}
+
 func (r *Runner) executeWithRetry(node *dot.Node, ctx *Context, stageDir string, policy retryPolicy, nodeRetries map[string]int) (*Outcome, error) {
 	handler := r.Resolver.Resolve(node)
 	if handler == nil {
@@ -206,259 +235,51 @@ func (r *Runner) executeWithRetry(node *dot.Node, ctx *Context, stageDir string,
 	}
 
 	for attempt := 1; attempt <= policy.maxAttempts; attempt++ {
-		outcome, err := func() (out *Outcome, retErr error) {
-			defer func() {
-				if r := recover(); r != nil {
-					out = &Outcome{Status: StatusFail, FailureReason: fmt.Sprintf("handler panic: %v", r)}
-				}
-			}()
-			return handler.Execute(node, ctx, r.Graph, stageDir)
-		}()
-
-		if err != nil {
-			if attempt < policy.maxAttempts {
-				delay := policy.delayForAttempt(attempt)
-				r.Emitter.Emit(event.Event{
-					Kind:   event.StageRetrying,
-					NodeID: node.ID,
-					Data:   map[string]any{"attempt": attempt, "delay_ms": delay.Milliseconds()},
-				})
-				time.Sleep(delay)
-				continue
-			}
-			return &Outcome{Status: StatusFail, FailureReason: err.Error()}, nil
-		}
+		outcome := r.safeExecute(handler, node, ctx, stageDir)
 
 		if outcome.Status == StatusSuccess || outcome.Status == StatusPartialSuccess {
 			nodeRetries[node.ID] = 0
 			return outcome, nil
 		}
 
-		if outcome.Status == StatusRetry {
-			if attempt < policy.maxAttempts {
-				nodeRetries[node.ID]++
-				delay := policy.delayForAttempt(attempt)
-				r.Emitter.Emit(event.Event{
-					Kind:   event.StageRetrying,
-					NodeID: node.ID,
-					Data:   map[string]any{"attempt": attempt, "delay_ms": delay.Milliseconds()},
-				})
-				time.Sleep(delay)
-				continue
-			}
-			if node.Attr("allow_partial", "") == "true" {
-				return &Outcome{Status: StatusPartialSuccess, Notes: "retries exhausted, partial accepted"}, nil
-			}
-			return &Outcome{Status: StatusFail, FailureReason: "max retries exceeded"}, nil
-		}
-
 		if outcome.Status == StatusFail {
 			return outcome, nil
 		}
 
-		return outcome, nil
+		if attempt < policy.maxAttempts {
+			nodeRetries[node.ID]++
+			r.sleepWithRetryEvent(node.ID, attempt, policy)
+			continue
+		}
+
+		if node.Attr("allow_partial", "") == "true" {
+			return &Outcome{Status: StatusPartialSuccess, Notes: "retries exhausted, partial accepted"}, nil
+		}
+		return &Outcome{Status: StatusFail, FailureReason: "max retries exceeded"}, nil
 	}
 
 	return &Outcome{Status: StatusFail, FailureReason: "max retries exceeded"}, nil
 }
 
-// Edge selection algorithm (5-step priority).
-func selectEdge(node *dot.Node, outcome *Outcome, ctx *Context, graph *dot.Graph) *dot.Edge {
-	edges := graph.OutgoingEdges(node.ID)
-	if len(edges) == 0 {
-		return nil
-	}
-
-	// Step 1: Condition-matching edges
-	var condMatched []*dot.Edge
-	for _, e := range edges {
-		cond := e.Attr("condition", "")
-		if cond != "" && EvaluateCondition(cond, outcome, ctx) {
-			condMatched = append(condMatched, e)
+func (r *Runner) safeExecute(handler NodeHandler, node *dot.Node, ctx *Context, stageDir string) (outcome *Outcome) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			outcome = &Outcome{Status: StatusFail, FailureReason: fmt.Sprintf("handler panic: %v", rec)}
 		}
+	}()
+	result, err := handler.Execute(node, ctx, r.Graph, stageDir)
+	if err != nil {
+		return &Outcome{Status: StatusFail, FailureReason: err.Error()}
 	}
-	if len(condMatched) > 0 {
-		return bestByWeightThenLexical(condMatched)
-	}
-
-	// Step 2: Preferred label
-	if outcome != nil && outcome.PreferredLabel != "" {
-		for _, e := range edges {
-			if normalizeLabel(e.Attr("label", "")) == normalizeLabel(outcome.PreferredLabel) {
-				return e
-			}
-		}
-	}
-
-	// Step 3: Suggested next IDs
-	if outcome != nil && len(outcome.SuggestedNextIDs) > 0 {
-		for _, sugID := range outcome.SuggestedNextIDs {
-			for _, e := range edges {
-				if e.To == sugID {
-					return e
-				}
-			}
-		}
-	}
-
-	// Step 4 & 5: Weight with lexical tiebreak (unconditional only)
-	var unconditional []*dot.Edge
-	for _, e := range edges {
-		if e.Attr("condition", "") == "" {
-			unconditional = append(unconditional, e)
-		}
-	}
-	if len(unconditional) > 0 {
-		return bestByWeightThenLexical(unconditional)
-	}
-
-	return bestByWeightThenLexical(edges)
+	return result
 }
 
-func bestByWeightThenLexical(edges []*dot.Edge) *dot.Edge {
-	if len(edges) == 0 {
-		return nil
-	}
-	sort.Slice(edges, func(i, j int) bool {
-		wi := parseWeight(edges[i].Attr("weight", "0"))
-		wj := parseWeight(edges[j].Attr("weight", "0"))
-		if wi != wj {
-			return wi > wj
-		}
-		return edges[i].To < edges[j].To
+func (r *Runner) sleepWithRetryEvent(nodeID string, attempt int, policy retryPolicy) {
+	delay := policy.delayForAttempt(attempt)
+	r.Emitter.Emit(event.Event{
+		Kind:   event.StageRetrying,
+		NodeID: nodeID,
+		Data:   map[string]any{"attempt": attempt, "delay_ms": delay.Milliseconds()},
 	})
-	return edges[0]
-}
-
-func parseWeight(s string) int {
-	n, _ := strconv.Atoi(s)
-	return n
-}
-
-func normalizeLabel(label string) string {
-	label = strings.ToLower(strings.TrimSpace(label))
-	// Strip accelerator prefixes
-	for _, pattern := range []string{`[`, `(`} {
-		if strings.HasPrefix(label, pattern) {
-			if idx := strings.IndexAny(label, "])-"); idx >= 0 {
-				label = strings.TrimSpace(label[idx+1:])
-			}
-		}
-	}
-	return label
-}
-
-func findStartNode(graph *dot.Graph) *dot.Node {
-	for _, n := range graph.Nodes {
-		if n.Attr("shape", "") == "Mdiamond" {
-			return n
-		}
-	}
-	for _, id := range []string{"start", "Start"} {
-		if n, ok := graph.Nodes[id]; ok {
-			return n
-		}
-	}
-	return nil
-}
-
-func isTerminal(node *dot.Node) bool {
-	shape := node.Attr("shape", "")
-	if shape == "Msquare" {
-		return true
-	}
-	nodeType := node.Attr("type", "")
-	return nodeType == "exit"
-}
-
-func checkGoalGates(graph *dot.Graph, outcomes map[string]*Outcome) (bool, *dot.Node) {
-	for nodeID, outcome := range outcomes {
-		node, ok := graph.Nodes[nodeID]
-		if !ok {
-			continue
-		}
-		if node.Attr("goal_gate", "") == "true" {
-			if outcome.Status != StatusSuccess && outcome.Status != StatusPartialSuccess {
-				return false, node
-			}
-		}
-	}
-	return true, nil
-}
-
-func getRetryTarget(node *dot.Node, graph *dot.Graph) string {
-	if t := node.Attr("retry_target", ""); t != "" {
-		return t
-	}
-	if t := node.Attr("fallback_retry_target", ""); t != "" {
-		return t
-	}
-	if t := graph.GraphAttr("retry_target", ""); t != "" {
-		return t
-	}
-	return graph.GraphAttr("fallback_retry_target", "")
-}
-
-func mirrorGraphAttributes(graph *dot.Graph, ctx *Context) {
-	for k, v := range graph.Attrs {
-		ctx.Set("graph."+k, v)
-	}
-}
-
-func writeManifest(logsRoot string, graph *dot.Graph) {
-	manifest := map[string]any{
-		"name":       graph.Name,
-		"goal":       graph.GraphAttr("goal", ""),
-		"label":      graph.GraphAttr("label", ""),
-		"started_at": time.Now().UTC().Format(time.RFC3339),
-		"node_count": len(graph.Nodes),
-		"edge_count": len(graph.Edges),
-	}
-	data, _ := json.MarshalIndent(manifest, "", "  ")
-	_ = os.WriteFile(filepath.Join(logsRoot, "manifest.json"), data, 0644)
-}
-
-func writeStatusFile(stageDir string, outcome *Outcome) {
-	data, _ := json.MarshalIndent(outcome, "", "  ")
-	_ = os.WriteFile(filepath.Join(stageDir, "status.json"), data, 0644)
-}
-
-// Retry policy
-type retryPolicy struct {
-	maxAttempts    int
-	initialDelayMs int
-	backoffFactor  float64
-	maxDelayMs     int
-	jitter         bool
-}
-
-func buildRetryPolicy(node *dot.Node, graph *dot.Graph) retryPolicy {
-	maxRetries := 0
-	if v := node.Attr("max_retries", ""); v != "" {
-		maxRetries, _ = strconv.Atoi(v)
-	}
-	if maxRetries == 0 {
-		if v := graph.GraphAttr("default_max_retry", ""); v != "" {
-			maxRetries, _ = strconv.Atoi(v)
-		}
-	}
-
-	return retryPolicy{
-		maxAttempts:    maxRetries + 1,
-		initialDelayMs: 200,
-		backoffFactor:  2.0,
-		maxDelayMs:     60000,
-		jitter:         true,
-	}
-}
-
-func (p retryPolicy) delayForAttempt(attempt int) time.Duration {
-	delay := float64(p.initialDelayMs) * math.Pow(p.backoffFactor, float64(attempt-1))
-	if delay > float64(p.maxDelayMs) {
-		delay = float64(p.maxDelayMs)
-	}
-	if p.jitter {
-		delay = delay * (0.5 + rand.Float64())
-	}
-	return time.Duration(delay) * time.Millisecond
+	time.Sleep(delay)
 }

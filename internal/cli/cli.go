@@ -37,6 +37,12 @@ func Main() {
 		runCmd(progName, os.Args[2:])
 	case "validate":
 		validateCmd(progName, os.Args[2:])
+	case "inspect":
+		inspectCmd(progName, os.Args[2:])
+	case "list":
+		listCmd(progName, os.Args[2:])
+	case "graph":
+		graphCmd(progName, os.Args[2:])
 	case "version":
 		fmt.Println(progName, version)
 	case "help", "--help", "-h":
