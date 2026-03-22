@@ -6,6 +6,9 @@ The same commands apply when the binary is invoked as `jga` (substitute `jga` fo
 Usage:
   {{PROGRAM}} run <pipeline.dot> [flags]    Run a pipeline
   {{PROGRAM}} validate <pipeline.dot>       Validate a pipeline without running
+  {{PROGRAM}} inspect <run-path>            Inspect a completed pipeline run
+  {{PROGRAM}} list [log-dir]                List pipeline runs
+  {{PROGRAM}} graph <pipeline.dot>          Display graph structure
   {{PROGRAM}} version                       Print version
   {{PROGRAM}} help                          Show this help
 
@@ -42,4 +45,13 @@ Examples:
 
   # Validate only (no execution)
   {{PROGRAM}} validate pipeline.dot
+
+  # Inspect a previous run
+  {{PROGRAM}} inspect .jgattractorlogs/init_rest_app
+
+  # List all pipeline runs
+  {{PROGRAM}} list
+
+  # Display graph nodes and edges
+  {{PROGRAM}} graph examples/gorestspec/init_rest_app.dot
 ```

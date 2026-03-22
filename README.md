@@ -74,6 +74,20 @@ The binaries are self-contained with no external dependencies. `junglegreenattra
 # jga 0.1.0
 ```
 
+### Run all tests
+
+```bash
+make test
+```
+
+Equivalent:
+
+```bash
+go test ./...
+```
+
+Use `make test-race` to run tests with the race detector.
+
 ---
 
 ## Usage
@@ -131,6 +145,31 @@ junglegreenattractor validate pipeline.dot
 ```
 
 Returns exit code 0 if valid, 1 if there are errors. Warnings are printed but don't cause failure.
+
+### `junglegreenattractor inspect` / `jga inspect`
+
+View the details of a completed pipeline run — manifest, stage outcomes, and checkpoint state.
+
+```bash
+junglegreenattractor inspect .jgattractorlogs/init_rest_app
+```
+
+### `junglegreenattractor list` / `jga list`
+
+List all pipeline runs in the log directory.
+
+```bash
+junglegreenattractor list
+junglegreenattractor list /path/to/custom/logs
+```
+
+### `junglegreenattractor graph` / `jga graph`
+
+Display the structure of a DOT pipeline: all nodes (with their resolved handler types), edges, conditions, and labels.
+
+```bash
+junglegreenattractor graph examples/gorestspec/init_rest_app.dot
+```
 
 ### `junglegreenattractor version` / `jga version`
 
@@ -564,55 +603,76 @@ Selectors: `*` (all), `.class` (by class), `#id` (by node ID). Higher specificit
 
 ---
 
+## Code Quality
+
+This codebase adheres to the [Universal Code Specification](https://github.com/adrianguyareach/universalcodespecification):
+
+- **Single responsibility per file.** No source file exceeds ~200 lines. Handlers, validation rules, engine subsystems, and CLI commands are each in their own file.
+- **Explicit error handling.** All I/O errors (file writes, JSON marshalling) are returned or logged — never silently swallowed.
+- **Named constants over magic numbers.** File permissions, retry defaults, truncation limits, and timeouts are declared as named constants.
+- **Dependency inversion.** The engine depends on `NodeHandler` and `HandlerResolver` interfaces, not concrete implementations. Handlers, backends, and interviewers are injected.
+- **Small, focused functions.** The `Run()` loop is decomposed into `runLoop`, `executeStage`, `recordOutcome`, `advance`, `handleGoalGates`, and `safeExecute` — each under 30 lines.
+- **Layered architecture.** `dot` (parsing) → `transform` → `validate` → `engine` (orchestration) → `handler` (execution) → `cli` (interface). Dependencies point inward.
+- **Composable handlers.** New node types are added by implementing the `Handler` interface and registering with the `Registry` — no core engine changes needed (Open/Closed Principle).
+
+---
+
 ## Project Structure
 
 ```
 junglegreenattractor/
-├── cmd/junglegreenattractor/
-│   └── main.go                  # CLI entry (full name)
-├── cmd/jga/
-│   └── main.go                  # CLI entry (short alias)
+├── cmd/
+│   ├── junglegreenattractor/
+│   │   └── main.go                  # CLI entry (full name)
+│   └── jga/
+│       └── main.go                  # CLI entry (short alias)
 ├── internal/
 │   ├── cli/
-│   │   └── cli.go               # Shared CLI (run, validate, version, help)
+│   │   ├── cli.go                   # Command router + run/validate
+│   │   ├── inspect.go               # jga inspect — view run details
+│   │   ├── list.go                  # jga list — list pipeline runs
+│   │   ├── graph.go                 # jga graph — display graph structure
+│   │   └── usage.md                 # Embedded help text (go:embed)
 │   ├── dot/
-│   │   ├── ast.go               # Graph, Node, Edge types
-│   │   ├── lexer.go             # DOT tokenizer
-│   │   ├── parser.go            # DOT parser
-│   │   └── parser_test.go       # Parser tests
+│   │   ├── ast.go                   # Graph, Node, Edge types
+│   │   ├── lexer.go                 # DOT tokenizer
+│   │   ├── parser.go                # DOT parser
+│   │   └── parser_test.go
 │   ├── engine/
-│   │   ├── engine.go            # Core execution engine + edge selection
-│   │   ├── context.go           # Thread-safe key-value context
-│   │   ├── outcome.go           # StageStatus and Outcome types
-│   │   ├── checkpoint.go        # Checkpoint save/load
-│   │   ├── condition.go         # Condition expression evaluator
-│   │   ├── condition_test.go    # Condition tests
-│   │   └── engine_test.go       # Edge selection tests
+│   │   ├── engine.go                # Runner, Run loop, retry orchestration
+│   │   ├── edge.go                  # 5-step edge selection algorithm
+│   │   ├── graph.go                 # Graph traversal helpers
+│   │   ├── retry.go                 # Retry policy with exponential backoff
+│   │   ├── logfiles.go              # Manifest + status file persistence
+│   │   ├── context.go               # Thread-safe key-value context
+│   │   ├── outcome.go               # StageStatus and Outcome types
+│   │   ├── checkpoint.go            # Checkpoint save/load
+│   │   ├── condition.go             # Condition expression evaluator
+│   │   ├── condition_test.go
+│   │   └── engine_test.go
 │   ├── handler/
-│   │   ├── registry.go          # Handler registry + shape mapping
-│   │   ├── handlers.go          # All built-in handlers
-│   │   └── adapter.go           # Engine-handler bridge
+│   │   ├── registry.go              # Handler registry + shape mapping
+│   │   ├── adapter.go               # Engine-handler bridge
+│   │   ├── codergen.go              # LLM / simulation handler
+│   │   ├── human.go                 # Human-in-the-loop gate
+│   │   ├── tool.go                  # Shell command executor
+│   │   ├── parallel.go              # Fan-out / fan-in handlers
+│   │   ├── passthrough.go           # Start, Exit, Conditional, ManagerLoop
+│   │   └── default_registry.go      # Wires all handlers into a registry
 │   ├── interviewer/
-│   │   ├── types.go             # Interviewer interface, Question, Answer
-│   │   ├── console.go           # CLI interviewer (stdin)
-│   │   └── auto.go              # Auto-approve + queue interviewers
+│   │   ├── types.go                 # Interviewer interface
+│   │   ├── console.go               # Interactive CLI interviewer
+│   │   └── auto.go                  # Auto-approve + queue interviewers
 │   ├── stylesheet/
-│   │   └── stylesheet.go        # Model stylesheet parser/applier
+│   │   └── stylesheet.go            # CSS-like model stylesheet
 │   ├── transform/
-│   │   └── transforms.go        # Variable expansion + stylesheet transforms
+│   │   └── transforms.go            # Variable expansion + stylesheet
 │   ├── validate/
-│   │   └── validate.go          # Lint rules and validation
+│   │   ├── validate.go              # Validation orchestration + types
+│   │   └── rules.go                 # Individual lint rules
 │   └── event/
-│       └── event.go             # Typed event system
-├── examples/gorestspec/
-│   ├── simple_linear.dot        # Simple 2-node test pipeline
-│   ├── branching_example.dot    # Conditional routing example
-│   ├── init_rest_app.dot        # Scaffold a Go REST service
-│   ├── add_module.dot           # Add a vertical-slice module
-│   ├── add_usecase.dot          # Add a usecase to a module
-│   ├── add_middleware.dot        # Add middleware
-│   ├── add_migration.dot        # Database migration workflow
-│   └── full_feature.dot         # End-to-end feature with review gates
+│       └── event.go                 # Typed pub-sub event system
+├── examples/gorestspec/              # Example pipelines
 ├── go.mod
 └── README.md
 ```
