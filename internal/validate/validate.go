@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/adrianguyareach/gilbeys/internal/dot"
-	"github.com/adrianguyareach/gilbeys/internal/handler"
+	"github.com/adrianguyareach/junglegreenattractor/internal/dot"
+	"github.com/adrianguyareach/junglegreenattractor/internal/handler"
 )
 
 type Severity int

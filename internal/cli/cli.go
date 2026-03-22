@@ -1,87 +1,81 @@
-package main
+package cli
 
 import (
+	_ "embed"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/adrianguyareach/gilbeys/internal/dot"
-	"github.com/adrianguyareach/gilbeys/internal/engine"
-	"github.com/adrianguyareach/gilbeys/internal/event"
-	"github.com/adrianguyareach/gilbeys/internal/handler"
-	"github.com/adrianguyareach/gilbeys/internal/interviewer"
-	"github.com/adrianguyareach/gilbeys/internal/transform"
-	"github.com/adrianguyareach/gilbeys/internal/validate"
+	"github.com/adrianguyareach/junglegreenattractor/internal/dot"
+	"github.com/adrianguyareach/junglegreenattractor/internal/engine"
+	"github.com/adrianguyareach/junglegreenattractor/internal/event"
+	"github.com/adrianguyareach/junglegreenattractor/internal/handler"
+	"github.com/adrianguyareach/junglegreenattractor/internal/interviewer"
+	"github.com/adrianguyareach/junglegreenattractor/internal/transform"
+	"github.com/adrianguyareach/junglegreenattractor/internal/validate"
 )
+
+//go:embed usage.md
+var usageMarkdown string
+
+const usageProgramPlaceholder = "{{PROGRAM}}"
 
 const version = "0.1.0"
 
-func main() {
+// Main is the CLI entry point for both jga and junglegreenattractor binaries.
+func Main() {
+	progName := filepath.Base(os.Args[0])
 	if len(os.Args) < 2 {
-		printUsage()
+		printUsage(progName)
 		os.Exit(1)
 	}
 
 	switch os.Args[1] {
 	case "run":
-		runCmd(os.Args[2:])
+		runCmd(progName, os.Args[2:])
 	case "validate":
-		validateCmd(os.Args[2:])
+		validateCmd(progName, os.Args[2:])
 	case "version":
-		fmt.Println("gilbeys", version)
+		fmt.Println(progName, version)
 	case "help", "--help", "-h":
-		printUsage()
+		printUsage(progName)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", os.Args[1])
-		printUsage()
+		printUsage(progName)
 		os.Exit(1)
 	}
 }
 
-func printUsage() {
-	fmt.Println(`gilbeys - A DOT-based pipeline runner for AI workflows
+func printUsage(progName string) {
+	fmt.Print(usageText(progName))
+}
 
-Usage:
-  gilbeys run <pipeline.dot> [flags]    Run a pipeline
-  gilbeys validate <pipeline.dot>       Validate a pipeline without running
-  gilbeys version                       Print version
-  gilbeys help                          Show this help
+func usageText(progName string) string {
+	body := extractUsageFencedBlock(usageMarkdown)
+	out := strings.ReplaceAll(body, usageProgramPlaceholder, progName)
+	if !strings.HasSuffix(out, "\n") {
+		out += "\n"
+	}
+	return out
+}
 
-Run Flags:
-  -log <dir>            Log directory (default: .attractorlogs)
-  -name <name>          Run name for the log folder (default: derived from .dot filename)
-  -var key=value        Set pipeline variable (repeatable)
-  -auto-approve         Auto-approve all human gates
-  -simulate             Run in simulation mode (no LLM backend)
-
-Build:
-  go build -o gilbeys ./cmd/gilbeys/
-
-Examples:
-  # Run a pipeline (logs default to .attractorlogs/<dot-filename>_<timestamp>/)
-  gilbeys run pipeline.dot
-
-  # Custom log directory
-  gilbeys run pipeline.dot -log logs/.attractorlogs
-
-  # With variables and auto-approve (for CI/CD)
-  gilbeys run init_rest_app.dot -auto-approve \
-    -var module_name="github.com/acme/api" \
-    -var first_module="user"
-
-  # Multiple variables
-  gilbeys run add_module.dot \
-    -var module_name=product \
-    -var entity_fields="ID string, Name string, Price int64"
-
-  # Custom run name
-  gilbeys run full_feature.dot -name "feature-search-v2"
-
-  # Validate only (no execution)
-  gilbeys validate pipeline.dot`)
+// extractUsageFencedBlock returns the first fenced ``` ... ``` body from usage.md, or the full file if none.
+func extractUsageFencedBlock(md string) string {
+	start := strings.Index(md, "```")
+	if start < 0 {
+		return strings.TrimSpace(md)
+	}
+	start += 3
+	if nl := strings.IndexByte(md[start:], '\n'); nl >= 0 {
+		start += nl + 1
+	}
+	end := strings.Index(md[start:], "```")
+	if end < 0 {
+		return strings.TrimSpace(md[start:])
+	}
+	return strings.TrimSpace(md[start : start+end])
 }
 
 type varFlags []string
@@ -92,7 +86,7 @@ func (v *varFlags) Set(s string) error {
 	return nil
 }
 
-func runCmd(args []string) {
+func runCmd(progName string, args []string) {
 	// Extract the .dot file from args before flag parsing, since Go's flag
 	// package stops at the first positional argument.
 	var dotFile string
@@ -113,7 +107,7 @@ func runCmd(args []string) {
 	}
 
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
-	logDir := fs.String("log", ".attractorlogs", "Log directory")
+	logDir := fs.String("log", ".jgattractorlogs", "Log directory")
 	runName := fs.String("name", "", "Run name for the log folder (default: derived from .dot filename)")
 	autoApprove := fs.Bool("auto-approve", false, "Auto-approve all human gates")
 	simulate := fs.Bool("simulate", true, "Run in simulation mode (no LLM backend)")
@@ -127,7 +121,7 @@ func runCmd(args []string) {
 
 	if dotFile == "" {
 		fmt.Fprintln(os.Stderr, "Error: no pipeline file specified")
-		fmt.Fprintln(os.Stderr, "Usage: gilbeys run <pipeline.dot> [flags]")
+		fmt.Fprintf(os.Stderr, "Usage: %s run <pipeline.dot> [flags]\n", progName)
 		os.Exit(1)
 	}
 
@@ -189,7 +183,7 @@ func runCmd(args []string) {
 	if baseName == "" {
 		baseName = strings.TrimSuffix(filepath.Base(dotFile), filepath.Ext(dotFile))
 	}
-	logsRoot := filepath.Join(*logDir, fmt.Sprintf("%s_%s", baseName, time.Now().Format("20060102_150405")))
+	logsRoot := filepath.Join(*logDir, baseName)
 	if err := os.MkdirAll(logsRoot, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating log directory: %v\n", err)
 		os.Exit(1)
@@ -269,10 +263,10 @@ func runCmd(args []string) {
 	fmt.Printf("  Logs written to: %s\n", logsRoot)
 }
 
-func validateCmd(args []string) {
+func validateCmd(progName string, args []string) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "Error: no pipeline file specified")
-		fmt.Fprintln(os.Stderr, "Usage: gilbeys validate <pipeline.dot>")
+		fmt.Fprintf(os.Stderr, "Usage: %s validate <pipeline.dot>\n", progName)
 		os.Exit(1)
 	}
 

@@ -3,8 +3,8 @@ package transform
 import (
 	"strings"
 
-	"github.com/adrianguyareach/gilbeys/internal/dot"
-	"github.com/adrianguyareach/gilbeys/internal/stylesheet"
+	"github.com/adrianguyareach/junglegreenattractor/internal/dot"
+	"github.com/adrianguyareach/junglegreenattractor/internal/stylesheet"
 )
 
 // Transform modifies a graph in-place after parsing and before validation.

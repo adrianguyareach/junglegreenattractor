@@ -1,4 +1,4 @@
-# Gilbeys
+# Jungle Green Attractor
 
 A DOT-based pipeline runner that uses directed graphs (defined in Graphviz DOT syntax) to orchestrate multi-stage AI workflows. Built in Go as an implementation of the [Attractor specification](https://github.com/strongdm/attractor).
 
@@ -20,7 +20,7 @@ Each node in the graph is an AI task (LLM call, human review, conditional branch
 - [Validation](#validation)
 - [Logs and Checkpoints](#logs-and-checkpoints)
 - [Go REST Spec Examples](#go-rest-spec-examples)
-- [Extending Gilbeys](#extending-gilbeys)
+- [Extending Jungle Green Attractor](#extending-jungle-green-attractor)
 - [Project Structure](#project-structure)
 
 ---
@@ -28,17 +28,19 @@ Each node in the graph is an AI task (LLM call, human review, conditional branch
 ## Quick Start
 
 ```bash
-# Build
-go build -o gilbeys ./cmd/gilbeys/
+# Build (either binary; they are equivalent)
+go build -o junglegreenattractor ./cmd/junglegreenattractor/
+go build -o jga ./cmd/jga/
 
 # Run a simple pipeline
-./gilbeys run examples/gorestspec/simple_linear.dot
+./junglegreenattractor run examples/gorestspec/simple_linear.dot
+# or: ./jga run examples/gorestspec/simple_linear.dot
 
 # Validate a pipeline without running it
-./gilbeys validate examples/gorestspec/init_rest_app.dot
+./junglegreenattractor validate examples/gorestspec/init_rest_app.dot
 
 # Run with variables and auto-approve human gates
-./gilbeys run examples/gorestspec/init_rest_app.dot \
+./junglegreenattractor run examples/gorestspec/init_rest_app.dot \
   -auto-approve \
   -var module_name="github.com/acme/billing" \
   -var first_module="invoice"
@@ -55,37 +57,42 @@ go build -o gilbeys ./cmd/gilbeys/
 ### From Source
 
 ```bash
-git clone https://github.com/adrianguyareach/gilbeys.git
-cd gilbeys
-go build -o gilbeys ./cmd/gilbeys/
+git clone https://github.com/adrianguyareach/junglegreenattractor.git
+cd junglegreenattractor
+go build -o junglegreenattractor ./cmd/junglegreenattractor/
+go build -o jga ./cmd/jga/
 ```
 
-The binary is self-contained with no external dependencies.
+The binaries are self-contained with no external dependencies. `junglegreenattractor` and `jga` are the same program; install either or both.
 
 ### Verify
 
 ```bash
-./gilbeys version
-# gilbeys 0.1.0
+./junglegreenattractor version
+# junglegreenattractor 0.1.0
+./jga version
+# jga 0.1.0
 ```
 
 ---
 
 ## Usage
 
-### `gilbeys run`
+Commands below use `junglegreenattractor`; you can substitute `jga` in every example.
+
+### `junglegreenattractor run` / `jga run`
 
 Execute a DOT pipeline file.
 
 ```
-gilbeys run <pipeline.dot> [flags]
+junglegreenattractor run <pipeline.dot> [flags]
 ```
 
 **Flags:**
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-log <dir>` | `.attractorlogs` | Directory for pipeline run logs |
+| `-log <dir>` | `.jgattractorlogs` | Directory for pipeline run logs |
 | `-var key=value` | — | Set a pipeline variable (repeatable) |
 | `-auto-approve` | `false` | Auto-approve all human-in-the-loop gates |
 | `-simulate` | `true` | Run in simulation mode (no LLM backend) |
@@ -93,43 +100,43 @@ gilbeys run <pipeline.dot> [flags]
 **Examples:**
 
 ```bash
-# Basic run (logs go to .attractorlogs/)
-gilbeys run pipeline.dot
+# Basic run (logs go to .jgattractorlogs/<dot-basename>/)
+junglegreenattractor run pipeline.dot
 
 # Custom log directory
-gilbeys run pipeline.dot -log logs/.attractorlogs
+junglegreenattractor run pipeline.dot -log logs/.jgattractorlogs
 
 # With pipeline variables
-gilbeys run add_module.dot \
+junglegreenattractor run add_module.dot \
   -var module_name="product" \
   -var entity_fields="ID string, Name string, Price int64"
 
 # Auto-approve all human gates (CI/CD mode)
-gilbeys run full_feature.dot -auto-approve -var feature_description="Add search"
+junglegreenattractor run full_feature.dot -auto-approve -var feature_description="Add search"
 
 # Combine everything
-gilbeys run init_rest_app.dot \
+junglegreenattractor run init_rest_app.dot \
   -log output/logs \
   -auto-approve \
   -var module_name="github.com/acme/api" \
   -var first_module="user"
 ```
 
-### `gilbeys validate`
+### `junglegreenattractor validate` / `jga validate`
 
 Check a pipeline for errors without executing it.
 
 ```bash
-gilbeys validate pipeline.dot
+junglegreenattractor validate pipeline.dot
 ```
 
 Returns exit code 0 if valid, 1 if there are errors. Warnings are printed but don't cause failure.
 
-### `gilbeys version`
+### `junglegreenattractor version` / `jga version`
 
 Print the version number.
 
-### `gilbeys help`
+### `junglegreenattractor help` / `jga help`
 
 Show the help message.
 
@@ -137,7 +144,7 @@ Show the help message.
 
 ## Architecture
 
-Gilbeys implements the [Attractor specification](https://github.com/strongdm/attractor/blob/main/attractor-spec.md):
+Jungle Green Attractor implements the [Attractor specification](https://github.com/strongdm/attractor/blob/main/attractor-spec.md):
 
 ```
                     ┌─────────────┐
@@ -187,7 +194,7 @@ The engine traverses the graph node-by-node:
 
 ## DOT Pipeline Format
 
-Pipelines are defined as Graphviz `digraph` files. Gilbeys supports a strict subset of DOT syntax.
+Pipelines are defined as Graphviz `digraph` files. Jungle Green Attractor supports a strict subset of DOT syntax.
 
 ### Minimal Example
 
@@ -298,7 +305,7 @@ Supported operators: `=` (equals), `!=` (not equals), `&&` (AND).
 Pass variables with `-var key=value`. They're expanded as `$key` in graph attributes, node prompts, and edge attributes.
 
 ```bash
-gilbeys run pipeline.dot -var module_name="user" -var version="v2"
+junglegreenattractor run pipeline.dot -var module_name="user" -var version="v2"
 ```
 
 In your `.dot` file:
@@ -349,7 +356,7 @@ Edge labels can include accelerator keys in these formats:
 
 ## Validation
 
-Gilbeys validates pipelines before execution. Use `gilbeys validate` to check without running.
+Jungle Green Attractor validates pipelines before execution. Use `junglegreenattractor validate` (or `jga validate`) to check without running.
 
 ### Built-In Rules
 
@@ -371,11 +378,11 @@ Gilbeys validates pipelines before execution. Use `gilbeys validate` to check wi
 
 ## Logs and Checkpoints
 
-Each pipeline run creates a timestamped directory under the log root:
+Each pipeline run creates a directory under the log root named after the pipeline file (or `-name`):
 
 ```
-.attractorlogs/
-  run_20260311_143025/
+.jgattractorlogs/
+  init_rest_app/
     manifest.json              # Pipeline metadata
     checkpoint.json            # Execution state (for resume)
     start/
@@ -424,14 +431,14 @@ Each pipeline run creates a timestamped directory under the log root:
 
 ## Go REST Spec Examples
 
-Gilbeys ships with pre-built pipelines for the [Go REST Clean Architecture Spec](https://github.com/adrianguyareach/gorestspec). These are in `examples/gorestspec/`.
+Jungle Green Attractor ships with pre-built pipelines for the [Go REST Clean Architecture Spec](https://github.com/adrianguyareach/gorestspec). These are in `examples/gorestspec/`.
 
 ### Initialize a New REST Application
 
 Scaffolds a complete Go REST service from scratch.
 
 ```bash
-gilbeys run examples/gorestspec/init_rest_app.dot \
+junglegreenattractor run examples/gorestspec/init_rest_app.dot \
   -var module_name="github.com/acme/billing" \
   -var first_module="invoice"
 ```
@@ -441,7 +448,7 @@ gilbeys run examples/gorestspec/init_rest_app.dot \
 Adds a new domain module to an existing service.
 
 ```bash
-gilbeys run examples/gorestspec/add_module.dot \
+junglegreenattractor run examples/gorestspec/add_module.dot \
   -var module_name="product" \
   -var entity_fields="ID string, Name string, Description string, PriceInCents int64, CategoryID string, CreatedAt time.Time, UpdatedAt time.Time"
 ```
@@ -451,7 +458,7 @@ gilbeys run examples/gorestspec/add_module.dot \
 Adds a single usecase to an existing module.
 
 ```bash
-gilbeys run examples/gorestspec/add_usecase.dot \
+junglegreenattractor run examples/gorestspec/add_usecase.dot \
   -var module_name="user" \
   -var usecase_name="DeactivateUser"
 ```
@@ -461,7 +468,7 @@ gilbeys run examples/gorestspec/add_usecase.dot \
 Adds cross-cutting middleware (JWT auth, CORS, rate limiting, etc.).
 
 ```bash
-gilbeys run examples/gorestspec/add_middleware.dot \
+junglegreenattractor run examples/gorestspec/add_middleware.dot \
   -var middleware_type="jwt_auth"
 ```
 
@@ -470,7 +477,7 @@ gilbeys run examples/gorestspec/add_middleware.dot \
 Creates, validates, and optionally applies a database migration — with a human review gate.
 
 ```bash
-gilbeys run examples/gorestspec/add_migration.dot \
+junglegreenattractor run examples/gorestspec/add_migration.dot \
   -var migration_description="Add a products table with name, price, and category_id columns"
 ```
 
@@ -479,7 +486,7 @@ gilbeys run examples/gorestspec/add_migration.dot \
 End-to-end feature with planning and review gates at both plan and implementation phases.
 
 ```bash
-gilbeys run examples/gorestspec/full_feature.dot \
+junglegreenattractor run examples/gorestspec/full_feature.dot \
   -var feature_description="Add a product catalog module with CRUD endpoints, category filtering, and price range search"
 ```
 
@@ -498,7 +505,7 @@ gilbeys run examples/gorestspec/full_feature.dot \
 
 ---
 
-## Extending Gilbeys
+## Extending Jungle Green Attractor
 
 ### Custom CodergenBackend
 
@@ -560,10 +567,14 @@ Selectors: `*` (all), `.class` (by class), `#id` (by node ID). Higher specificit
 ## Project Structure
 
 ```
-gilbeys/
-├── cmd/gilbeys/
-│   └── main.go                  # CLI entry point
+junglegreenattractor/
+├── cmd/junglegreenattractor/
+│   └── main.go                  # CLI entry (full name)
+├── cmd/jga/
+│   └── main.go                  # CLI entry (short alias)
 ├── internal/
+│   ├── cli/
+│   │   └── cli.go               # Shared CLI (run, validate, version, help)
 │   ├── dot/
 │   │   ├── ast.go               # Graph, Node, Edge types
 │   │   ├── lexer.go             # DOT tokenizer

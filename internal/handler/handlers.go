@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/adrianguyareach/gilbeys/internal/dot"
-	"github.com/adrianguyareach/gilbeys/internal/engine"
-	"github.com/adrianguyareach/gilbeys/internal/interviewer"
+	"github.com/adrianguyareach/junglegreenattractor/internal/dot"
+	"github.com/adrianguyareach/junglegreenattractor/internal/engine"
+	"github.com/adrianguyareach/junglegreenattractor/internal/interviewer"
 )
 
 // StartHandler is a no-op for the pipeline entry point.
@@ -102,6 +102,43 @@ func (h *CodergenHandler) Execute(node *dot.Node, ctx *engine.Context, graph *do
 
 	writeStatus(stageDir, outcome)
 	return outcome, nil
+}
+
+// writeStageSummary creates a single markdown file that aggregates the prompt,
+// response, and status for a stage. This makes it easier to point external
+// coding agents at one file instead of three separate ones.
+func writeStageSummary(stageDir string) {
+	promptPath := filepath.Join(stageDir, "prompt.md")
+	responsePath := filepath.Join(stageDir, "response.md")
+	statusPath := filepath.Join(stageDir, "status.json")
+	summaryPath := filepath.Join(stageDir, "stage.md")
+
+	prompt, _ := os.ReadFile(promptPath)
+	response, _ := os.ReadFile(responsePath)
+	status, _ := os.ReadFile(statusPath)
+
+	var b strings.Builder
+	b.WriteString("# Stage\n\n")
+
+	if len(prompt) > 0 {
+		b.WriteString("## Prompt\n\n")
+		b.Write(prompt)
+		b.WriteString("\n\n")
+	}
+
+	if len(response) > 0 {
+		b.WriteString("## Response\n\n")
+		b.Write(response)
+		b.WriteString("\n\n")
+	}
+
+	if len(status) > 0 {
+		b.WriteString("## Status\n\n```json\n")
+		b.Write(status)
+		b.WriteString("\n```\n")
+	}
+
+	_ = os.WriteFile(summaryPath, []byte(b.String()), 0644)
 }
 
 // WaitForHumanHandler blocks until a human selects an option.
@@ -227,9 +264,9 @@ func (h *ParallelHandler) Execute(node *dot.Node, ctx *engine.Context, graph *do
 		Status: engine.StatusSuccess,
 		Notes:  fmt.Sprintf("Parallel fan-out to %d branches (sequential simulation)", len(edges)),
 		ContextUpdates: map[string]string{
-			"parallel.branch_count":   fmt.Sprintf("%d", len(edges)),
-			"parallel.success_count":  fmt.Sprintf("%d", successCount),
-			"parallel.failure_count":  fmt.Sprintf("%d", failCount),
+			"parallel.branch_count":  fmt.Sprintf("%d", len(edges)),
+			"parallel.success_count": fmt.Sprintf("%d", successCount),
+			"parallel.failure_count": fmt.Sprintf("%d", failCount),
 		},
 	}, nil
 }

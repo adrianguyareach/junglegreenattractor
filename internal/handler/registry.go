@@ -1,8 +1,8 @@
 package handler
 
 import (
-	"github.com/adrianguyareach/gilbeys/internal/dot"
-	"github.com/adrianguyareach/gilbeys/internal/engine"
+	"github.com/adrianguyareach/junglegreenattractor/internal/dot"
+	"github.com/adrianguyareach/junglegreenattractor/internal/engine"
 )
 
 // Handler is the interface every node handler must implement.

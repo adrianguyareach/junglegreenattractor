@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/adrianguyareach/gilbeys/internal/dot"
-	"github.com/adrianguyareach/gilbeys/internal/event"
+	"github.com/adrianguyareach/junglegreenattractor/internal/dot"
+	"github.com/adrianguyareach/junglegreenattractor/internal/event"
 )
 
 // Handler interface duplicated here to avoid import cycle.

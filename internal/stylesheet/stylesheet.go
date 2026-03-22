@@ -3,7 +3,7 @@ package stylesheet
 import (
 	"strings"
 
-	"github.com/adrianguyareach/gilbeys/internal/dot"
+	"github.com/adrianguyareach/junglegreenattractor/internal/dot"
 )
 
 // Rule represents a parsed stylesheet rule.
