@@ -516,16 +516,24 @@ The upstream Attractor spec is broad. This repository implements a large, useful
 - interviewer pattern
 - event emission
 
-It is thinner on:
+### Thin areas (easy-to-spot gap map)
 
-- true parallel execution
-- pipeline composition
-- HTTP server mode
-- artifact-store abstraction
-- tool-call hooks
-- some advanced context-fidelity behaviors
+> [!WARNING]
+> **THIN AREA = implemented partially or not yet implemented.**  
+> Use this list as your implementation backlog while reading the mapping below.
 
-The walkthrough below calls those gaps out explicitly.
+| Area | Current state | How to implement next |
+|---|---|---|
+| True parallel execution | `Partially implemented` | In `ParallelHandler`, spawn branch workers with `sync.WaitGroup` + bounded worker pool; give each branch an isolated child context; aggregate branch outcomes in `FanInHandler`; define deterministic failure/merge policy (fail-fast vs collect-all). |
+| Pipeline composition | `Not implemented` | Promote `ManagerLoopHandler` from stub to real orchestrator: load child `.dot`, run child `engine.Runner`, map child outcome back to parent outcome/context, and guard recursion depth with explicit limits. |
+| HTTP server mode | `Not implemented` | Add `cmd/jga-server` and `internal/server`: `POST /runs`, `GET /runs/:id`, `GET /runs/:id/events`; execute runs in background goroutines, persist run index, and stream events via SSE/WebSocket. |
+| Artifact-store abstraction | `Partially implemented` | Introduce `ArtifactStore` interface (`Write`, `Read`, `List`, `Exists`); keep filesystem as default implementation; inject store into engine/handlers so S3/GCS backends can be added without runtime changes. |
+| Tool-call hooks | `Not implemented` | Add before/after hook interfaces around `ToolHandler` execution: emit pre-exec policy event, allow deny/mutate command, capture post-exec telemetry (duration, exit code, output size), and record to event stream. |
+| Advanced context-fidelity behaviors | `Partially implemented` | Define fidelity policies (`full`, `compact`, `summary:*`) in a dedicated policy module; apply at checkpoint/artifact write time; add truncation/summarization strategy and validation tests for each level. |
+
+The walkthrough below calls these gaps out explicitly in the relevant spec sections.
+
+For implementation-level guidance on how to close these gaps, see `CODERGEN.md`, especially `9. Implementing the Thin Areas from CODE_WALKTHROUGH.md`.
 
 ---
 

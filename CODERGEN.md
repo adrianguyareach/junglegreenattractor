@@ -2354,9 +2354,538 @@ That proves the graph engine and agent loop are actually connected.
 
 ---
 
-## 9. Design Decisions and Tradeoffs
+## 9. Implementing the Thin Areas from `CODE_WALKTHROUGH.md`
 
-### 9.1 Why not put the coding-agent loop inside `internal/engine`?
+`CODE_WALKTHROUGH.md` now explicitly marks several areas as "thin":
+
+- true parallel execution
+- pipeline composition
+- HTTP server mode
+- artifact-store abstraction
+- tool-call hooks
+- advanced context-fidelity behavior
+
+This section goes deeper than the walkthrough. The goal here is not just to name the gaps, but to show how to implement them in a way that fits the architecture already proposed in this repository.
+
+### 9.1 True parallel execution
+
+Current state:
+
+- `parallel` and `parallel.fan_in` exist as handler concepts
+- the current behavior is mostly sequential simulation
+- branch metadata is recorded, but true concurrent branch orchestration does not exist
+
+What "done" should mean:
+
+- a `parallel` node launches multiple child branches concurrently
+- each branch executes with isolated mutable state
+- branch outcomes are collected deterministically
+- a `fan_in` node merges branch results into one continuation point
+- failure behavior is explicit and testable
+
+Recommended package changes:
+
+- keep graph traversal in `internal/engine`
+- keep branch semantics helpers in `internal/engine/parallel.go`
+- keep node-specific user-facing behavior in `internal/handler/parallel.go`
+- keep context snapshot/merge logic in `internal/engine/context.go` or a new `internal/engine/context_merge.go`
+
+Recommended runtime model:
+
+```text
+parallel node reached
+  -> enumerate outgoing branch edges
+  -> for each branch:
+       -> clone parent context
+       -> create branch runner state
+       -> execute branch in goroutine
+  -> wait for all branches
+  -> collect outcomes
+  -> write branch summary artifact
+  -> continue to fan-in or fail according to merge policy
+```
+
+Important design rule:
+
+> Do not let all branches mutate the same `Context` concurrently.
+
+That would make branch behavior order-dependent and hard to debug. Instead:
+
+1. snapshot parent context
+2. give each branch its own child context
+3. merge only after branch completion
+
+Suggested data types:
+
+```go
+type BranchResult struct {
+	EdgeLabel   string
+	TargetNode  string
+	Outcome     *Outcome
+	Context     map[string]string
+	Logs        []string
+	Err         error
+	StartedAt   time.Time
+	FinishedAt  time.Time
+}
+
+type ParallelResult struct {
+	Branches []BranchResult
+	Policy   string
+}
+```
+
+Suggested merge policy options:
+
+- `fail_fast`: stop overall parallel stage as soon as any branch hard-fails
+- `collect_all`: wait for every branch, then aggregate
+- `require_all_success`: fan-in succeeds only if all branches succeed
+- `allow_partial`: fan-in can downgrade to `partial_success`
+
+Suggested implementation sequence:
+
+1. Add branch-runner helper in `internal/engine/parallel.go`.
+2. Add `Context.Clone()` and deterministic merge helpers if they do not already exist.
+3. Define merge policy attributes on the parallel or fan-in node:
+   - `parallel_policy`
+   - `fan_in_policy`
+   - `allow_partial`
+4. Emit branch lifecycle events:
+   - `branch.started`
+   - `branch.completed`
+   - `branch.failed`
+5. Persist branch artifacts, for example:
+   - `parallel.json`
+   - `branches/<branch-id>/status.json`
+   - `branches/<branch-id>/checkpoint.json`
+
+Suggested merge behavior:
+
+- scalar keys with identical values merge cleanly
+- scalar keys with conflicting values should either:
+  - use namespaced branch keys, or
+  - be resolved by explicit merge policy
+- logs should append in timestamp order
+
+What not to do:
+
+- do not start with arbitrary nested parallelism
+- do not merge contexts by "last goroutine wins"
+- do not hide branch failures inside one generic success result
+
+Tests to add:
+
+- two successful branches merge correctly
+- one branch fails under `fail_fast`
+- one branch fails under `collect_all`
+- conflicting context keys are resolved predictably
+- branch events are emitted in the expected lifecycle order
+
+### 9.2 Pipeline composition
+
+Current state:
+
+- `ManagerLoopHandler` exists as a placeholder
+- there is no child-pipeline loading, invocation, or supervision model
+
+What "done" should mean:
+
+- one node in a parent graph can invoke another graph
+- the parent can pass variables into the child
+- the child can return an `Outcome` and structured outputs back to the parent
+- recursion and runaway nesting are bounded
+
+Recommended model:
+
+```text
+parent graph stage
+  -> resolve child pipeline path
+  -> build child runner config
+  -> pass selected context values as variables
+  -> execute child graph
+  -> map child result back into parent outcome/context
+```
+
+Recommended package changes:
+
+- add `internal/engine/composition.go`
+- keep the public orchestration entry point at the engine layer, not inside handlers alone
+- let `ManagerLoopHandler` translate node attrs into a `ChildRunRequest`
+
+Suggested types:
+
+```go
+type ChildRunRequest struct {
+	PipelinePath string
+	Vars         map[string]string
+	ParentRunID  string
+	ParentNodeID string
+	Depth        int
+	MaxDepth     int
+}
+
+type ChildRunResult struct {
+	Outcome      *Outcome
+	Context      map[string]string
+	LogsRoot     string
+	Completed    []string
+}
+```
+
+Useful node attributes:
+
+- `child_pipeline`
+- `child_var_prefix`
+- `child_result_prefix`
+- `max_child_depth`
+
+Recommended safety rules:
+
+- require explicit `max_child_depth`
+- record parent/child linkage in manifest metadata
+- reject self-recursive composition unless explicitly allowed
+- surface child-run failure as a normal parent-stage failure
+
+How parent/child state should map:
+
+- parent -> child:
+  - selected variables
+  - selected context keys
+  - goal metadata if useful
+- child -> parent:
+  - final outcome status
+  - child logs path
+  - namespaced child outputs such as `child.<node>.result`
+
+Artifacts to persist:
+
+- parent stage artifact referencing child run path
+- child manifest including `parent_run_id`
+- composition summary JSON
+
+Tests to add:
+
+- child pipeline succeeds and returns outputs
+- child pipeline fails and parent surfaces failure
+- recursion depth guard blocks runaway nesting
+- parent/child manifests link correctly
+
+### 9.3 HTTP server mode
+
+Current state:
+
+- execution is CLI-only
+- there is no HTTP transport, run registry, or event streaming endpoint
+
+What "done" should mean:
+
+- you can submit a pipeline run over HTTP
+- you can inspect run status and artifacts over HTTP
+- you can stream runtime events live
+- the HTTP layer reuses the same engine and handler core as the CLI
+
+Recommended package layout:
+
+- `cmd/jga-server/main.go`
+- `internal/server/router.go`
+- `internal/server/handlers.go`
+- `internal/server/runs.go`
+- `internal/server/events.go`
+
+Minimal API surface:
+
+- `POST /runs`
+- `GET /runs/{id}`
+- `GET /runs/{id}/events`
+- `GET /runs/{id}/artifacts`
+- `POST /validate`
+
+Recommended host model:
+
+```text
+HTTP request
+  -> validate request payload
+  -> create run record
+  -> enqueue or launch runner goroutine
+  -> persist state transitions
+  -> return run id immediately
+```
+
+Important design rule:
+
+> The HTTP server should be a transport wrapper around the existing engine, not a second execution engine.
+
+That means:
+
+- same `dot.Parse`
+- same transforms
+- same `validate`
+- same `engine.NewRunner`
+- same handler registry
+
+Suggested run registry type:
+
+```go
+type RunRecord struct {
+	ID        string
+	Status    string
+	LogsRoot  string
+	CreatedAt time.Time
+	StartedAt time.Time
+	EndedAt   time.Time
+	Error     string
+}
+```
+
+Suggested event transport:
+
+- start with SSE before WebSocket
+- stream normalized event payloads from the existing emitter
+- keep one JSON event shape for CLI/server parity
+
+Recommended rollout:
+
+1. Add `POST /validate`.
+2. Add `POST /runs` + `GET /runs/{id}`.
+3. Add SSE event streaming.
+4. Add artifact browsing only after the base APIs are stable.
+
+Tests to add:
+
+- submit run returns ID
+- run status progresses correctly
+- event stream receives lifecycle events
+- invalid payloads return useful errors
+
+### 9.4 Artifact-store abstraction
+
+Current state:
+
+- artifacts already exist
+- they are written directly to the filesystem from engine/handlers
+- there is no abstraction boundary for alternate backends
+
+What "done" should mean:
+
+- engine and handlers depend on an interface, not on `os.WriteFile`
+- filesystem remains the default backend
+- other stores can be added later without changing execution semantics
+
+Recommended interface:
+
+```go
+type ArtifactStore interface {
+	Write(ctx context.Context, key string, data []byte, contentType string) error
+	Read(ctx context.Context, key string) ([]byte, error)
+	Exists(ctx context.Context, key string) (bool, error)
+	List(ctx context.Context, prefix string) ([]string, error)
+}
+```
+
+Recommended implementations:
+
+- `internal/artifacts/fsstore.go`
+- later: `s3store.go`, `gcsstore.go`
+
+Migration strategy:
+
+1. Introduce the interface.
+2. Wrap current filesystem writes behind `FSStore`.
+3. Inject the store into:
+   - engine config
+   - codergen handler
+   - inspect/list commands if needed
+4. Keep path layout stable so existing logs still look familiar.
+
+Key design point:
+
+- use logical artifact keys such as `runs/<run-id>/manifest.json`
+- let the FS implementation map keys onto directories
+
+That avoids baking filesystem assumptions into the rest of the code.
+
+Artifacts that should move behind the store first:
+
+- `manifest.json`
+- `checkpoint.json`
+- `status.json`
+- `prompt.md`
+- `response.md`
+
+Tests to add:
+
+- FS store roundtrip
+- engine writes manifest through store
+- codergen writes prompt/response through store
+- listing artifacts returns stable logical keys
+
+### 9.5 Tool-call hooks
+
+Current state:
+
+- tools execute
+- output is captured
+- there is no formal pre/post hook chain around tool execution
+
+What "done" should mean:
+
+- policy can inspect a tool call before execution
+- telemetry can observe a tool call after execution
+- calls can be denied, mutated, or annotated by hook logic
+- both agent-loop tools and pipeline `tool` stages can reuse the same hook concept
+
+Recommended types:
+
+```go
+type ToolCall struct {
+	Name      string
+	Arguments map[string]any
+	SessionID string
+	StageID   string
+}
+
+type PreToolHook interface {
+	BeforeTool(ctx context.Context, call *ToolCall) error
+}
+
+type PostToolHook interface {
+	AfterTool(ctx context.Context, call *ToolCall, result *ToolResult) error
+}
+```
+
+Useful hook use cases:
+
+- deny dangerous commands
+- redact secrets from arguments
+- append audit tags
+- record latency and output size
+- enforce per-tool timeout policy
+
+Recommended placement:
+
+- general hook framework in `internal/codergen/hooks.go`
+- tool-stage reuse adapter in `internal/handler/tool.go`
+
+Suggested execution flow:
+
+```text
+model requests tool
+  -> validate tool args
+  -> run pre-hooks
+  -> execute tool
+  -> build normalized result
+  -> run post-hooks
+  -> emit session/tool events
+```
+
+Important design rule:
+
+> Hooks should observe or constrain execution, not become a hidden second business-logic layer.
+
+That means hook order must be explicit and deterministic.
+
+Tests to add:
+
+- pre-hook blocks forbidden tool call
+- post-hook receives result metadata
+- hook errors propagate clearly
+- hook ordering is deterministic
+
+### 9.6 Advanced context-fidelity behavior
+
+Current state:
+
+- fidelity values are validated
+- there is not yet a full runtime policy for what each fidelity level actually does
+
+What "done" should mean:
+
+- fidelity level changes how much context/artifact data is carried forward
+- truncation/summarization happens intentionally, not ad hoc
+- each fidelity mode has predictable semantics
+
+Recommended fidelity modes:
+
+- `full`: keep full artifacts and raw tool outputs
+- `compact`: trim large outputs, keep key facts
+- `summary:low`: short summary only
+- `summary:medium`: structured summary with important details
+- `summary:high`: richer summary with rationale and selected excerpts
+
+Recommended package changes:
+
+- `internal/codergen/fidelity.go`
+- `internal/codergen/summarize.go`
+- optionally `internal/engine/fidelity.go` if pipeline-level policies must apply outside codergen
+
+Recommended API:
+
+```go
+type FidelityPolicy interface {
+	ProjectContext(input map[string]string) map[string]string
+	ProjectArtifact(name string, content []byte) ([]byte, error)
+}
+```
+
+Recommended behavior:
+
+- apply fidelity policy when:
+  - injecting prior context into model requests
+  - storing tool outputs
+  - writing checkpoints intended for later rehydration
+- keep the original artifact if storage policy says so, but expose a projected version to later model turns
+
+Practical rule:
+
+> Separate "what we store" from "what we send back into the model".
+
+Those are related, but they are not the same decision.
+
+If you conflate them, you either:
+
+- overpay for context by always sending everything, or
+- lose auditability by storing too little
+
+Tests to add:
+
+- each fidelity mode produces deterministic output
+- large tool outputs are truncated or summarized as expected
+- projected context remains valid for later turns
+
+### 9.7 Recommended implementation order for the thin areas
+
+Do these in this order:
+
+1. Artifact-store abstraction
+2. Tool-call hooks
+3. Advanced context-fidelity behavior
+4. True parallel execution
+5. Pipeline composition
+6. HTTP server mode
+
+Why this order:
+
+- artifact store, hooks, and fidelity improve the foundation used by both the agent loop and future transports
+- parallel execution and composition are more invasive runtime changes
+- HTTP server mode is easiest once the execution core and artifact model are already stable
+
+### 9.8 What should stay unchanged while you add these features
+
+Preserve these invariants:
+
+- the engine remains the single workflow runtime
+- the CLI remains a transport/composition layer
+- `CodergenBackend` remains the initial migration seam
+- `Outcome` stays the normalized stage contract
+- event emission remains structured and typed
+
+If a proposal breaks one of those invariants, it is probably introducing too much change at once.
+
+---
+
+## 10. Design Decisions and Tradeoffs
+
+### 10.1 Why not put the coding-agent loop inside `internal/engine`?
 
 Because the engine already has one job:
 
@@ -2371,7 +2900,7 @@ If you put agent-session logic there too, you mix:
 
 That would make the engine package much harder to reason about.
 
-### 9.2 Why keep `CodergenBackend` initially?
+### 10.2 Why keep `CodergenBackend` initially?
 
 Because it gives you a stable migration seam.
 
@@ -2389,7 +2918,7 @@ CodergenHandler -> AgentLoopBackend -> Session -> LLM Client + Tool Registry + E
 
 That lets you evolve the backend without rewriting the engine.
 
-### 9.3 Why separate provider profile from LLM client?
+### 10.3 Why separate provider profile from LLM client?
 
 Because they solve different problems.
 
@@ -2403,7 +2932,7 @@ Because they solve different problems.
 
 If you combine them, the design becomes harder to extend and harder to test.
 
-### 9.4 Why keep pipeline events and session events distinct?
+### 10.4 Why keep pipeline events and session events distinct?
 
 Because they describe different layers of behavior.
 
@@ -2424,7 +2953,7 @@ They may eventually share a transport, but they should not share a type definiti
 
 ---
 
-## 10. Final Implementation Summary
+## 11. Final Implementation Summary
 
 If you remember only one thing from this document, remember this architecture:
 
@@ -2456,7 +2985,7 @@ That gives you a true coding-agent loop **without destabilizing the current Attr
 
 ---
 
-## 11. Suggested Reading Order After This Document
+## 12. Suggested Reading Order After This Document
 
 Once you finish `CODERGEN.md`, read the repo in this order:
 
@@ -2482,7 +3011,7 @@ That sequence minimizes confusion because each file depends on the concepts befo
 
 ---
 
-## 12. Practical Next Step
+## 13. Practical Next Step
 
 If you want the shortest path to a working implementation in this repo, do this first:
 
