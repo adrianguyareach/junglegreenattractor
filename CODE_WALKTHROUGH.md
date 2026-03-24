@@ -524,16 +524,16 @@ You do **not** need to understand the whole upstream spec before reading this se
 
 ### Vocabulary decoder
 
-| Spec term | Simple meaning |
-|---|---|
-| DSL | The text format users write (`.dot`) |
-| Transform | A cleanup or rewrite step before validation/execution |
-| Handler | The Go code that runs one node |
-| Outcome | The result a node returns |
-| Context | Shared runtime data between stages |
-| Goal gate | A stage that must succeed before exit is allowed |
-| Fidelity | How much detail is kept when carrying context forward |
-| Extensibility | How easy it is to add new behavior later |
+| Spec term     | Simple meaning                                        |
+| ------------- | ----------------------------------------------------- |
+| DSL           | The text format users write (`.dot`)                  |
+| Transform     | A cleanup or rewrite step before validation/execution |
+| Handler       | The Go code that runs one node                        |
+| Outcome       | The result a node returns                             |
+| Context       | Shared runtime data between stages                    |
+| Goal gate     | A stage that must succeed before exit is allowed      |
+| Fidelity      | How much detail is kept when carrying context forward |
+| Extensibility | How easy it is to add new behavior later              |
 
 The upstream Attractor spec is broad. This repository implements a large, useful subset of it, especially:
 
@@ -552,14 +552,14 @@ The upstream Attractor spec is broad. This repository implements a large, useful
 > **THIN AREA = implemented partially or not yet implemented.**  
 > Use this list as your implementation backlog while reading the mapping below.
 
-| Area | Current state | How to implement next |
-|---|---|---|
-| True parallel execution | `Partially implemented` | In `ParallelHandler`, spawn branch workers with `sync.WaitGroup` + bounded worker pool; give each branch an isolated child context; aggregate branch outcomes in `FanInHandler`; define deterministic failure/merge policy (fail-fast vs collect-all). |
-| Pipeline composition | `Not implemented` | Promote `ManagerLoopHandler` from stub to real orchestrator: load child `.dot`, run child `engine.Runner`, map child outcome back to parent outcome/context, and guard recursion depth with explicit limits. |
-| HTTP server mode | `Not implemented` | Add `cmd/jga-server` and `internal/server`: `POST /runs`, `GET /runs/:id`, `GET /runs/:id/events`; execute runs in background goroutines, persist run index, and stream events via SSE/WebSocket. |
-| Artifact-store abstraction | `Partially implemented` | Introduce `ArtifactStore` interface (`Write`, `Read`, `List`, `Exists`); keep filesystem as default implementation; inject store into engine/handlers so S3/GCS backends can be added without runtime changes. |
-| Tool-call hooks | `Not implemented` | Add before/after hook interfaces around `ToolHandler` execution: emit pre-exec policy event, allow deny/mutate command, capture post-exec telemetry (duration, exit code, output size), and record to event stream. |
-| Advanced context-fidelity behaviors | `Partially implemented` | Define fidelity policies (`full`, `compact`, `summary:*`) in a dedicated policy module; apply at checkpoint/artifact write time; add truncation/summarization strategy and validation tests for each level. |
+| Area                                | Current state           | How to implement next                                                                                                                                                                                                                                  |
+| ----------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| True parallel execution             | `Partially implemented` | In `ParallelHandler`, spawn branch workers with `sync.WaitGroup` + bounded worker pool; give each branch an isolated child context; aggregate branch outcomes in `FanInHandler`; define deterministic failure/merge policy (fail-fast vs collect-all). |
+| Pipeline composition                | `Not implemented`       | Promote `ManagerLoopHandler` from stub to real orchestrator: load child `.dot`, run child `engine.Runner`, map child outcome back to parent outcome/context, and guard recursion depth with explicit limits.                                           |
+| HTTP server mode                    | `Not implemented`       | Add `cmd/jga-server` and `internal/server`: `POST /runs`, `GET /runs/:id`, `GET /runs/:id/events`; execute runs in background goroutines, persist run index, and stream events via SSE/WebSocket.                                                      |
+| Artifact-store abstraction          | `Partially implemented` | Introduce `ArtifactStore` interface (`Write`, `Read`, `List`, `Exists`); keep filesystem as default implementation; inject store into engine/handlers so S3/GCS backends can be added without runtime changes.                                         |
+| Tool-call hooks                     | `Not implemented`       | Add before/after hook interfaces around `ToolHandler` execution: emit pre-exec policy event, allow deny/mutate command, capture post-exec telemetry (duration, exit code, output size), and record to event stream.                                    |
+| Advanced context-fidelity behaviors | `Partially implemented` | Define fidelity policies (`full`, `compact`, `summary:*`) in a dedicated policy module; apply at checkpoint/artifact write time; add truncation/summarization strategy and validation tests for each level.                                            |
 
 The walkthrough below calls these gaps out explicitly in the relevant spec sections.
 
@@ -575,8 +575,6 @@ Quick takeaway: this section explains the big ideas behind Attractor and shows h
 
 > `1. Overview and Goals`  
 > `1.1 Problem Statement`
-
-### In Plain English
 
 Attractor exists so that AI workflows can be declared as graphs instead of hand-written orchestration code.
 
@@ -616,8 +614,6 @@ Each node in the graph is an AI task (LLM call, human review, conditional branch
 ### What The Spec Covers
 
 > `1.2 Why DOT Syntax`
-
-### In Plain English
 
 The spec chooses DOT because it already has:
 
@@ -661,8 +657,6 @@ This is where DOT stops being text and starts being executable structure.
 ### What The Spec Covers
 
 > `1.3 Design Principles`
-
-### In Plain English
 
 The spec emphasizes:
 
@@ -714,8 +708,6 @@ func (r *Registry) Resolve(node *dot.Node) Handler {
 
 > `1.4 Layering and LLM Backends`
 
-### In Plain English
-
 The spec wants workflow orchestration to be independent of the specific LLM provider.
 
 That means the engine should not know about OpenAI, Anthropic, Gemini, or any specific SDK. It should depend on an interface.
@@ -753,8 +745,6 @@ Quick takeaway: this section explains how the `.dot` file format is parsed and w
 ### What The Spec Covers
 
 > `2.1 Supported Subset`
-
-### In Plain English
 
 The spec does not require a full Graphviz implementation. It requires a **constrained, executable subset**.
 
@@ -804,8 +794,6 @@ func (p *parser) parseGraph() (*Graph, error) {
 ### What The Spec Covers
 
 > `2.2 BNF-Style Grammar`
-
-### In Plain English
 
 The spec defines a grammar so that:
 
@@ -870,8 +858,6 @@ func (p *parser) parseAttrBlock() (map[string]string, error) {
 
 > `2.3 Key Constraints`
 
-### In Plain English
-
 The spec constrains the language so execution is predictable:
 
 - one graph per file
@@ -904,8 +890,6 @@ if _, err := p.expect(tokDigraph); err != nil {
 ### What The Spec Covers
 
 > `2.4 Value Types`
-
-### In Plain English
 
 The spec uses simple attribute values so that the language is easy to parse and easy to serialize.
 
@@ -955,8 +939,6 @@ type Edge struct {
 ### What The Spec Covers
 
 > `2.5 Graph-Level Attributes`
-
-### In Plain English
 
 Graph-level attributes configure the run globally:
 
@@ -1011,8 +993,6 @@ func mirrorGraphAttributes(graph *dot.Graph, ctx *Context) {
 
 > `2.6 Node Attributes`
 
-### In Plain English
-
 Node attributes configure how one stage behaves:
 
 - label
@@ -1054,8 +1034,6 @@ func (n *Node) Attr(key, defaultVal string) string {
 
 > `2.7 Edge Attributes`
 
-### In Plain English
-
 Edge attributes control routing and priority.
 
 This is one of the most important Attractor ideas: edges are not just arrows; they encode execution policy.
@@ -1083,8 +1061,6 @@ func (e *Edge) Attr(key, defaultVal string) string {
 ### What The Spec Covers
 
 > `2.8 Shape-to-Handler-Type Mapping`
-
-### In Plain English
 
 The spec maps DOT shapes to runtime behavior. This is a key bridge between visualization and execution.
 
@@ -1122,8 +1098,6 @@ var ShapeToType = map[string]string{
 ### What The Spec Covers
 
 > `2.9 Chained Edges`
-
-### In Plain English
 
 Chained edges let authors write:
 
@@ -1178,8 +1152,6 @@ if p.cur().kind == tokArrow {
 
 > `2.10 Subgraphs`
 
-### In Plain English
-
 Subgraphs are useful for grouping nodes and applying shared meaning, including class derivation.
 
 ### Where It Lives In This Repo
@@ -1220,8 +1192,6 @@ if sub.Label == "" {
 ### What The Spec Covers
 
 > `2.11 Node and Edge Default Blocks`
-
-### In Plain English
 
 Default blocks let authors set shared defaults once:
 
@@ -1271,8 +1241,6 @@ case tokEdge:
 
 > `2.12 Class Attribute`
 
-### In Plain English
-
 The `class` attribute supports stylesheet-style matching.
 
 ### Where It Lives In This Repo
@@ -1310,8 +1278,6 @@ func deriveClass(label string) string {
 
 > `2.13 Minimal Examples`
 
-### In Plain English
-
 The spec includes small examples so the mental model is concrete.
 
 ### Where It Lives In This Repo
@@ -1346,8 +1312,6 @@ Quick takeaway: this section explains the runtime loop, which is the part of the
 ### What The Spec Covers
 
 > `3.1 Run Lifecycle`
-
-### In Plain English
 
 The spec describes the lifecycle as:
 
@@ -1408,8 +1372,6 @@ func (r *Runner) Run() (*Outcome, error) {
 ### What The Spec Covers
 
 > `3.2 Core Execution Loop`
-
-### In Plain English
 
 This is the most important part of Attractor. The engine repeatedly:
 
@@ -1474,8 +1436,6 @@ for {
 
 > `3.3 Edge Selection Algorithm`
 
-### In Plain English
-
 The spec requires deterministic edge selection after a node finishes.
 
 That matters because a workflow engine must never be ambiguous about "what happens next?"
@@ -1524,8 +1484,6 @@ This closely mirrors the upstream spec and is one of the cleanest parts of the i
 
 > `3.4 Goal Gate Enforcement`
 
-### In Plain English
-
 A goal gate says:
 
 "The pipeline may not exit unless this stage succeeded."
@@ -1571,8 +1529,6 @@ func checkGoalGates(graph *dot.Graph, outcomes map[string]*Outcome) (bool, *dot.
 ### What The Spec Covers
 
 > `3.5 Retry Logic`
-
-### In Plain English
 
 The spec requires bounded retries for transient failure or explicit retry outcomes.
 
@@ -1626,8 +1582,6 @@ for attempt := 1; attempt <= policy.maxAttempts; attempt++ {
 
 > `3.6 Retry Policy`
 
-### In Plain English
-
 The spec requires retry configuration to be explicit and bounded.
 
 ### Where It Lives In This Repo
@@ -1674,8 +1628,6 @@ func buildRetryPolicy(node *dot.Node, graph *dot.Graph) retryPolicy {
 
 > `3.7 Failure Routing`
 
-### In Plain English
-
 The spec wants failures to still participate in graph routing, not just crash the program blindly.
 
 ### Where It Lives In This Repo
@@ -1713,8 +1665,6 @@ func (r *Runner) advance(node *dot.Node, outcome *Outcome, ctx *Context) (*dot.N
 ### What The Spec Covers
 
 > `3.8 Concurrency Model`
-
-### In Plain English
 
 The spec discusses parallel branches and concurrency behavior.
 
@@ -1764,8 +1714,6 @@ Quick takeaway: this section explains what each node type actually does when the
 
 > `4.1 Handler Interface`
 
-### In Plain English
-
 A handler is the unit of work that executes one node.
 
 The engine should not know handler details; it should only know the contract.
@@ -1797,8 +1745,6 @@ type Handler interface {
 ### What The Spec Covers
 
 > `4.2 Handler Registry`
-
-### In Plain English
 
 The registry decouples:
 
@@ -1846,8 +1792,6 @@ func BuildDefaultRegistry(backend CodergenBackend, iv interviewer.Interviewer) *
 
 > `4.3 Start Handler`
 
-### In Plain English
-
 The start node exists to mark entry. It is usually a no-op.
 
 ### Where It Lives In This Repo
@@ -1872,8 +1816,6 @@ func (h *StartHandler) Execute(node *dot.Node, ctx *engine.Context, graph *dot.G
 
 > `4.4 Exit Handler`
 
-### In Plain English
-
 The exit node marks successful termination. It is also usually a no-op.
 
 ### Where It Lives In This Repo
@@ -1897,8 +1839,6 @@ func (h *ExitHandler) Execute(node *dot.Node, ctx *engine.Context, graph *dot.Gr
 ### What The Spec Covers
 
 > `4.5 Codergen Handler (LLM Task)`
-
-### In Plain English
 
 This is the main "AI work" handler:
 
@@ -1966,8 +1906,6 @@ func (h *CodergenHandler) Execute(node *dot.Node, ctx *engine.Context, graph *do
 
 > `4.5.1 CodergenBackend Interface`
 
-### In Plain English
-
 The backend abstraction isolates the orchestration layer from the model provider.
 
 ### Where It Lives In This Repo
@@ -1989,8 +1927,6 @@ type CodergenBackend interface {
 ### What The Spec Covers
 
 > `4.6 Wait For Human Handler`
-
-### In Plain English
 
 This handler pauses the graph and asks a human which edge to take.
 
@@ -2050,8 +1986,6 @@ func (h *WaitForHumanHandler) Execute(node *dot.Node, ctx *engine.Context, graph
 
 > `4.7 Conditional Handler`
 
-### In Plain English
-
 A conditional node usually does not perform work itself. It simply exists as a semantic routing point.
 
 ### Where It Lives In This Repo
@@ -2084,8 +2018,6 @@ func (h *ConditionalHandler) Execute(node *dot.Node, ctx *engine.Context, graph 
 ### What The Spec Covers
 
 > `4.8 Parallel Handler`
-
-### In Plain English
 
 The spec describes fan-out across multiple branches.
 
@@ -2132,8 +2064,6 @@ func (h *ParallelHandler) Execute(node *dot.Node, ctx *engine.Context, graph *do
 
 > `4.9 Fan-In Handler`
 
-### In Plain English
-
 Fan-in should merge branch results back into one logical continuation point.
 
 ### Where It Lives In This Repo
@@ -2169,8 +2099,6 @@ func (h *FanInHandler) Execute(node *dot.Node, ctx *engine.Context, graph *dot.G
 ### What The Spec Covers
 
 > `4.10 Tool Handler`
-
-### In Plain English
 
 The tool handler lets a graph execute shell commands as stages.
 
@@ -2225,8 +2153,6 @@ func (h *ToolHandler) Execute(node *dot.Node, ctx *engine.Context, graph *dot.Gr
 
 > `4.11 Manager Loop Handler`
 
-### In Plain English
-
 The spec discusses a manager/supervisor loop for child workflows.
 
 ### Where It Lives In This Repo
@@ -2259,8 +2185,6 @@ func (h *ManagerLoopHandler) Execute(node *dot.Node, ctx *engine.Context, graph 
 ### What The Spec Covers
 
 > `4.12 Custom Handlers`
-
-### In Plain English
 
 The spec expects new handlers to be addable without changing the engine.
 
@@ -2295,8 +2219,6 @@ Quick takeaway: this section explains what data the system remembers while a pip
 ### What The Spec Covers
 
 > `5.1 Context`
-
-### In Plain English
 
 Context is shared runtime state across stages.
 
@@ -2348,8 +2270,6 @@ func (c *Context) Get(key string) string {
 
 > `5.2 Outcome`
 
-### In Plain English
-
 Outcome is the normalized result shape for every stage.
 
 This is critical because it gives the engine one common language regardless of handler type.
@@ -2387,8 +2307,6 @@ type Outcome struct {
 ### What The Spec Covers
 
 > `5.3 Checkpoint`
-
-### In Plain English
 
 Checkpoints allow a run to persist enough state to inspect or resume later.
 
@@ -2438,8 +2356,6 @@ func NewCheckpoint(ctx *Context, currentNode string, completedNodes []string, no
 
 > `5.4 Context Fidelity`
 
-### In Plain English
-
 The spec discusses different levels of context fidelity and how much data should be carried forward.
 
 ### Where It Lives In This Repo
@@ -2471,8 +2387,6 @@ func checkFidelityValid(graph *dot.Graph) []Diagnostic {
 ### What The Spec Covers
 
 > `5.5 Artifact Store`
-
-### In Plain English
 
 The spec describes a generalized artifact store abstraction.
 
@@ -2521,8 +2435,6 @@ func writeManifest(logsRoot string, graph *dot.Graph) error {
 
 > `5.6 Run Directory Structure`
 
-### In Plain English
-
 The spec expects a stable run directory layout so tools and humans can inspect runs consistently.
 
 ### Where It Lives In This Repo
@@ -2560,8 +2472,6 @@ Quick takeaway: this section explains how the workflow asks a human for input wi
 
 > `6.1 Interviewer Interface`
 
-### In Plain English
-
 The engine should not read from stdin directly. Human interaction should go through an abstraction.
 
 ### Where It Lives In This Repo
@@ -2594,8 +2504,6 @@ type Interviewer interface {
 
 > `6.2 Question Model`
 
-### In Plain English
-
 Questions need structure so the same handler logic can drive different UIs.
 
 ### Where It Lives In This Repo
@@ -2620,8 +2528,6 @@ type Question struct {
 ### What The Spec Covers
 
 > `6.3 Answer Model`
-
-### In Plain English
 
 Answers must represent both normal user choices and special states such as timeout or skip.
 
@@ -2655,8 +2561,6 @@ type Answer struct {
 ### What The Spec Covers
 
 > `6.4 Built-In Interviewer Implementations`
-
-### In Plain English
 
 The spec wants multiple interviewer implementations for different environments.
 
@@ -2713,8 +2617,6 @@ func (a *AutoApproveInterviewer) Ask(q Question) Answer {
 
 > `6.5 Timeout Handling`
 
-### In Plain English
-
 Human waiting cannot be infinite in every environment. Timeout needs a defined behavior.
 
 ### Where It Lives In This Repo
@@ -2760,8 +2662,6 @@ Quick takeaway: this section explains how the repo catches bad pipelines early, 
 
 > `7.1 Diagnostic Model`
 
-### In Plain English
-
 Validation findings must be structured, not just free-form strings.
 
 ### Where It Lives In This Repo
@@ -2795,8 +2695,6 @@ type Diagnostic struct {
 ### What The Spec Covers
 
 > `7.2 Built-In Lint Rules`
-
-### In Plain English
 
 The spec expects a baseline rule set that catches invalid pipelines before execution.
 
@@ -2839,8 +2737,6 @@ func Validate(graph *dot.Graph) []Diagnostic {
 
 > `7.3 Validation API`
 
-### In Plain English
-
 Validation should be usable in two ways:
 
 - get all diagnostics
@@ -2876,8 +2772,6 @@ func ValidateOrRaise(graph *dot.Graph) ([]Diagnostic, error) {
 
 > `7.4 Custom Lint Rules`
 
-### In Plain English
-
 The spec discusses extensible validation beyond built-in rules.
 
 ### Where It Lives In This Repo
@@ -2911,8 +2805,6 @@ Quick takeaway: this section explains how shared model settings can be applied t
 
 > `8.1 Overview`
 
-### In Plain English
-
 The stylesheet lets a graph centralize model/provider choices rather than repeating them on every node.
 
 ### Where It Lives In This Repo
@@ -2941,8 +2833,6 @@ func (t *StylesheetApplication) Apply(graph *dot.Graph) {
 ### What The Spec Covers
 
 > `8.2 Stylesheet Grammar`
-
-### In Plain English
 
 The spec defines a small CSS-like rule format.
 
@@ -2991,8 +2881,6 @@ func Parse(source string) []Rule {
 ### What The Spec Covers
 
 > `8.3 Selectors and Specificity`
-
-### In Plain English
 
 The spec allows:
 
@@ -3048,8 +2936,6 @@ func matches(selector string, node *dot.Node) bool {
 
 > `8.4 Recognized Properties`
 
-### In Plain English
-
 The spec expects stylesheet properties such as model/provider-related settings.
 
 ### Where It Lives In This Repo
@@ -3081,8 +2967,6 @@ That is flexible, but slightly looser than a stricter spec-driven property contr
 ### What The Spec Covers
 
 > `8.5 Application Order`
-
-### In Plain English
 
 Stylesheet order and specificity determine which rule wins.
 
@@ -3122,8 +3006,6 @@ for spec := 0; spec <= 2; spec++ {
 
 > `8.6 Example`
 
-### In Plain English
-
 The spec includes example stylesheet declarations to make the model concrete.
 
 ### Where It Lives In This Repo
@@ -3154,8 +3036,6 @@ Quick takeaway: this section explains how the graph can be adjusted before execu
 
 > `9.1 AST Transforms`
 
-### In Plain English
-
 Transforms let you modify the parsed graph before validation or execution.
 
 ### Where It Lives In This Repo
@@ -3183,8 +3063,6 @@ type Transform interface {
 ### What The Spec Covers
 
 > `9.2 Built-In Transforms`
-
-### In Plain English
 
 The spec expects some built-in transforms to exist out of the box.
 
@@ -3219,8 +3097,6 @@ That ordering matters because later phases rely on a fully materialized graph.
 
 > `9.3 Custom Transforms`
 
-### In Plain English
-
 Users should be able to add their own graph rewriting steps.
 
 ### Where It Lives In This Repo
@@ -3250,8 +3126,6 @@ func ApplyAll(graph *dot.Graph, transforms []Transform) {
 ### What The Spec Covers
 
 > `9.4 Pipeline Composition`
-
-### In Plain English
 
 The spec discusses composing or nesting pipelines.
 
@@ -3285,8 +3159,6 @@ func (h *ManagerLoopHandler) Execute(node *dot.Node, ctx *engine.Context, graph 
 
 > `9.5 HTTP Server Mode`
 
-### In Plain English
-
 The spec discusses exposing pipeline execution through an HTTP server.
 
 ### Where It Lives In This Repo
@@ -3317,8 +3189,6 @@ func main() {
 ### What The Spec Covers
 
 > `9.6 Observability and Events`
-
-### In Plain English
 
 The spec expects structured runtime events so execution can be observed externally.
 
@@ -3374,8 +3244,6 @@ func (e *Emitter) Emit(evt Event) {
 
 > `9.7 Tool Call Hooks`
 
-### In Plain English
-
 The spec mentions hooks around tool calls for extra observability or policy control.
 
 ### Where It Lives In This Repo
@@ -3407,8 +3275,6 @@ Quick takeaway: this section explains the small rule language used to decide whe
 ### What The Spec Covers
 
 > `10.1 Overview`
-
-### In Plain English
 
 Conditions let edges become executable guards instead of passive connections.
 
@@ -3446,8 +3312,6 @@ func EvaluateCondition(condition string, outcome *Outcome, ctx *Context) bool {
 ### What The Spec Covers
 
 > `10.2 Grammar`
-
-### In Plain English
 
 The grammar is intentionally tiny:
 
@@ -3491,8 +3355,6 @@ func evaluateClause(clause string, outcome *Outcome, ctx *Context) bool {
 ### What The Spec Covers
 
 > `10.3 Semantics`
-
-### In Plain English
 
 A condition is evaluated against runtime data:
 
@@ -3548,8 +3410,6 @@ func resolveKey(key string, outcome *Outcome, ctx *Context) string {
 
 > `10.4 Variable Resolution`
 
-### In Plain English
-
 The spec defines how names inside condition expressions map to runtime values.
 
 ### Where It Lives In This Repo
@@ -3565,8 +3425,6 @@ Same `resolveKey()` implementation as above.
 ### What The Spec Covers
 
 > `10.5 Evaluation`
-
-### In Plain English
 
 Evaluation should be deterministic and easy to audit.
 
@@ -3604,8 +3462,6 @@ return true
 
 > `10.6 Examples`
 
-### In Plain English
-
 The spec includes examples like:
 
 - `outcome=success`
@@ -3630,8 +3486,6 @@ check -> write_main [label="No",  condition="outcome!=success"]
 ### What The Spec Covers
 
 > `10.7 Extended Operators (Future)`
-
-### In Plain English
 
 The spec explicitly marks richer operators as future work.
 
@@ -3830,8 +3684,6 @@ This section is best read as a simple checklist: what is already done, what is p
 
 > `11.12 Cross-Feature Parity Matrix`
 
-### In Plain English
-
 The spec compares supported features across implementations.
 
 ### Where It Lives In This Repo
@@ -3856,8 +3708,6 @@ This repository effectively falls into this parity profile:
 
 > `11.13 Integration Smoke Test`
 
-### In Plain English
-
 The spec wants an end-to-end smoke test proving the overall flow works.
 
 ### Where It Lives In This Repo
@@ -3881,8 +3731,6 @@ Quick takeaway: this section covers the supporting reference details such as att
 ### What The Spec Covers
 
 > `Appendix A: Complete Attribute Reference`
-
-### In Plain English
 
 The appendices centralize the contract for graph, node, and edge attributes.
 
@@ -3927,8 +3775,6 @@ Already covered by `handler.ShapeToType`.
 
 > `Appendix C: Status File Contract`
 
-### In Plain English
-
 The spec wants stage status files to be machine-readable and stable.
 
 ### Where It Lives In This Repo
@@ -3960,8 +3806,6 @@ func WriteStatusFile(stageDir string, outcome *Outcome) error {
 ### What The Spec Covers
 
 > `Appendix D: Error Categories`
-
-### In Plain English
 
 The spec describes error families such as parse, validation, handler, and runtime errors.
 
