@@ -8,9 +8,69 @@ It is written for a developer who wants to go from:
 - to "I can trace execution through this repository"
 - to "I can modify or re-implement the system confidently"
 
+## Table of Contents
+
+[1. How To Read This Guide](#1-how-to-read-this-guide)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[1.1 Spec Item](#11-spec-item)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[1.2 Explanation](#12-explanation)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[1.3 Implementation in This Repo](#13-implementation-in-this-repo)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[1.4 Code Breakdown](#14-code-breakdown)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[1.5 Status](#15-status)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[1.6 Keeping this walkthrough in sync with the code](#16-keeping-this-walkthrough-in-sync-with-the-code)<br/>
+[2. High-Level Overview](#2-high-level-overview)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[2.1 What is Attractor?](#21-what-is-attractor)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[2.2 What problem does Attractor solve?](#22-what-problem-does-attractor-solve)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[2.3 Key Attractor concepts](#23-key-attractor-concepts)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[2.3.1 Pipeline](#231-pipeline)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[2.3.2 Node](#232-node)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[2.3.3 Edge](#233-edge)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[2.3.4 Context](#234-context)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[2.3.5 Outcome](#235-outcome)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[2.3.6 Handler](#236-handler)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[2.3.7 Checkpoint and logs](#237-checkpoint-and-logs)<br/>
+[3. Execution Flow (Top Down)](#3-execution-flow-top--down)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[3.1 Entry points in `cmd`](#31-entry-points-in-cmd)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[3.2 Top-down control-flow diagram](#32-top-down-control-flow-diagram)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[3.3 CLI routing](#33-cli-routing)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[3.4 What happens in `runCmd`](#34-what-happens-in-runcmd)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[3.5 How the engine takes over](#35-how-the-engine-takes-over)<br/>
+[4. Specification -> Implementation Mapping (Critical)](#4-specification--implementation-mapping-critical)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[4.1 Spec Section 1: Overview and Goals](#41-spec-section-1-overview-and-goals)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[4.2 Spec Section 2: DOT DSL Schema](#42-spec-section-2-dot-dsl-schema)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[4.3 Spec Section 3: Pipeline Execution Engine](#43-spec-section-3-pipeline-execution-engine)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[4.4 Spec Section 4: Node Handlers](#44-spec-section-4-node-handlers)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[4.5 Spec Section 5: State and Context](#45-spec-section-5-state-and-context)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[4.6 Spec Section 6: Human-in-the-Loop (Interviewer Pattern)](#46-spec-section-6-human-in-the-loop-interviewer-pattern)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[4.7 Spec Section 7: Validation and Linting](#47-spec-section-7-validation-and-linting)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[4.8 Spec Section 8: Model Stylesheet](#48-spec-section-8-model-stylesheet)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[4.9 Spec Section 9: Transforms and Extensibility](#49-spec-section-9-transforms-and-extensibility)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[4.10 Spec Section 10: Condition Expression Language](#410-spec-section-10-condition-expression-language)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[4.11 Spec Section 11: Definition of Done](#411-spec-section-11-definition-of-done)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[4.12 Spec Appendices](#412-spec-appendices)<br/>
+[5. Key Components Deep Dive](#5-key-components-deep-dive)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[5.1 `internal/cli`](#51-internalcli)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[5.2 `internal/dot`](#52-internaldot)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[5.3 `internal/transform`](#53-internaltransform)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[5.4 `internal/validate`](#54-internalvalidate)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[5.5 `internal/handler`](#55-internalhandler)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[5.6 `internal/engine`](#56-internalengine)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[5.7 `internal/interviewer`](#57-internalinterviewer)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[5.8 `internal/event`](#58-internalevent)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[5.9 `internal/stylesheet`](#59-internalstylesheet)<br/>
+[6. End-to-End Example](#6-end-to-end-example)<br/>
+[7. Design Insights](#7-design-insights)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[7.1 Why this architecture was chosen](#71-why-this-architecture-was-chosen)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[7.2 Strengths](#72-strengths)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[7.3 Weaknesses and limitations](#73-weaknesses-and-limitations)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[7.4 How I would extend it](#74-how-i-would-extend-it)<br/>
+[8. Re-Implementing Attractor From Scratch: The Minimum Blueprint](#8-re-implementing-attractor-from-scratch-the-minimum-blueprint)<br/>
+[9. Final Takeaways](#9-final-takeaways)<br/>
+[10. Suggested Next Reading Order Inside This Repo](#10-suggested-next-reading-order-inside-this-repo)<br/>
+[11. Source References](#11-source-references)
+
 ---
 
-## How To Read This Guide
+## 1. How To Read This Guide
 
 This walkthrough has three goals:
 
@@ -20,37 +80,42 @@ This walkthrough has three goals:
 
 Throughout this document, each spec section is handled using this pattern:
 
-### Spec Item
+### 1.1 Spec Item
+
 > The Attractor spec concept, section title, or rule being implemented.
 
-### Explanation
+### 1.2 Explanation
+
 - What it means in plain English
 - Why it exists
 - What problem it solves
 
-### Implementation in This Repo
+### 1.3 Implementation in This Repo
+
 - Exact file and function
 - A code snippet
 
-### Code Breakdown
+### 1.4 Code Breakdown
+
 - A line-by-line or idea-by-idea explanation of the important lines
 
-### Status
+### 1.5 Status
+
 - `Implemented`
 - `Partially implemented`
 - `Not implemented in this repository`
 
 That status is important. This repository is a strong CLI-first Attractor-style runner, but it does **not** implement every optional or future-facing part of the upstream specification.
 
-### Keeping this walkthrough in sync with the code
+### 1.6 Keeping this walkthrough in sync with the code
 
 Whenever the repository’s structure or behavior changes (new packages, renamed files, new CLI commands, engine or handler changes), **update this document in the same change** so paths, responsibilities, and reading order stay accurate. Treat `CODE_WALKTHROUGH.md` as part of the change, not an afterthought.
 
 ---
 
-## 1. High-Level Overview
+## 2. High-Level Overview
 
-### What is Attractor?
+### 2.1 What is Attractor?
 
 Attractor is a specification for describing and executing **AI workflows as graphs**.
 
@@ -75,7 +140,7 @@ In short:
 DOT file + attributes + handlers = executable AI workflow
 ```
 
-### What problem does Attractor solve?
+### 2.2 What problem does Attractor solve?
 
 Attractor solves a coordination problem:
 
@@ -95,13 +160,13 @@ Attractor solves a coordination problem:
 
 This repository applies that idea to a **CLI pipeline runner in Go**.
 
-### Key Attractor concepts
+### 2.3 Key Attractor concepts
 
-#### 1. Pipeline
+#### 2.3.1 Pipeline
 
 A pipeline is one directed graph declared in a `.dot` file.
 
-#### 2. Node
+#### 2.3.2 Node
 
 A node represents one stage of work:
 
@@ -114,7 +179,7 @@ A node represents one stage of work:
 - parallel fan-out
 - fan-in
 
-#### 3. Edge
+#### 2.3.3 Edge
 
 An edge connects one node to another and may include:
 
@@ -123,11 +188,11 @@ An edge connects one node to another and may include:
 - a `weight`
 - a `loop_restart` flag
 
-#### 4. Context
+#### 2.3.4 Context
 
 Context is the mutable key-value state shared across the whole pipeline run.
 
-#### 5. Outcome
+#### 2.3.5 Outcome
 
 Each node returns an `Outcome` saying:
 
@@ -136,11 +201,11 @@ Each node returns an `Outcome` saying:
 - what context updates to apply
 - which label or next node is preferred
 
-#### 6. Handler
+#### 2.3.6 Handler
 
 A handler is the concrete Go implementation that executes a node.
 
-#### 7. Checkpoint and logs
+#### 2.3.7 Checkpoint and logs
 
 The runner persists:
 
@@ -153,11 +218,11 @@ That makes runs inspectable and, conceptually, resumable.
 
 ---
 
-## 2. Execution Flow (Top → Down)
+## 3. Execution Flow (Top → Down)
 
 This section traces execution from the command entrypoint all the way down into the core engine.
 
-### Entry points in `cmd`
+### 3.1 Entry points in `cmd`
 
 Both binaries are extremely small:
 
@@ -189,7 +254,7 @@ func main() {
 - all real logic stays in `internal/cli`
 - the command packages stay trivial
 
-### Top-down control-flow diagram
+### 3.2 Top-down control-flow diagram
 
 ```text
 cmd/jga/main.go
@@ -225,7 +290,7 @@ internal/cli.Main()
                 +--> repeat until exit
 ```
 
-### CLI routing
+### 3.3 CLI routing
 
 The CLI package is the true application interface layer.
 
@@ -273,7 +338,7 @@ func Main() {
 - `validate` stops before execution
 - `inspect`, `list`, and `graph` are operational/observability commands for users
 
-### What happens in `runCmd`
+### 3.4 What happens in `runCmd`
 
 The `run` command performs the application bootstrap for a pipeline execution.
 
@@ -337,7 +402,7 @@ This function is the composition root for a run:
 
 That separation is good architecture: the CLI composes; the engine executes.
 
-### How the engine takes over
+### 3.5 How the engine takes over
 
 Once `engine.NewRunner(...).Run()` is called, the CLI stops being the center of control.
 
@@ -436,7 +501,7 @@ This is the heart of the repository.
 
 ---
 
-## 3. Specification → Implementation Mapping (Critical)
+## 4. Specification → Implementation Mapping (Critical)
 
 This is the main section of the walkthrough.
 
@@ -464,9 +529,10 @@ The walkthrough below calls those gaps out explicitly.
 
 ---
 
-## 3.1 Spec Section 1: Overview and Goals
+## 4.1 Spec Section 1: Overview and Goals
 
 ### Spec Item
+
 > `1. Overview and Goals`  
 > `1.1 Problem Statement`
 
@@ -508,6 +574,7 @@ Each node in the graph is an AI task (LLM call, human review, conditional branch
 ---
 
 ### Spec Item
+
 > `1.2 Why DOT Syntax`
 
 ### Explanation
@@ -552,6 +619,7 @@ This is where DOT stops being text and starts being executable structure.
 ---
 
 ### Spec Item
+
 > `1.3 Design Principles`
 
 ### Explanation
@@ -603,6 +671,7 @@ func (r *Registry) Resolve(node *dot.Node) Handler {
 ---
 
 ### Spec Item
+
 > `1.4 Layering and LLM Backends`
 
 ### Explanation
@@ -637,9 +706,10 @@ type CodergenBackend interface {
 
 ---
 
-## 3.2 Spec Section 2: DOT DSL Schema
+## 4.2 Spec Section 2: DOT DSL Schema
 
 ### Spec Item
+
 > `2.1 Supported Subset`
 
 ### Explanation
@@ -690,6 +760,7 @@ func (p *parser) parseGraph() (*Graph, error) {
 ---
 
 ### Spec Item
+
 > `2.2 BNF-Style Grammar`
 
 ### Explanation
@@ -754,6 +825,7 @@ func (p *parser) parseAttrBlock() (map[string]string, error) {
 ---
 
 ### Spec Item
+
 > `2.3 Key Constraints`
 
 ### Explanation
@@ -788,6 +860,7 @@ if _, err := p.expect(tokDigraph); err != nil {
 ---
 
 ### Spec Item
+
 > `2.4 Value Types`
 
 ### Explanation
@@ -838,6 +911,7 @@ type Edge struct {
 ---
 
 ### Spec Item
+
 > `2.5 Graph-Level Attributes`
 
 ### Explanation
@@ -892,6 +966,7 @@ func mirrorGraphAttributes(graph *dot.Graph, ctx *Context) {
 ---
 
 ### Spec Item
+
 > `2.6 Node Attributes`
 
 ### Explanation
@@ -934,6 +1009,7 @@ func (n *Node) Attr(key, defaultVal string) string {
 ---
 
 ### Spec Item
+
 > `2.7 Edge Attributes`
 
 ### Explanation
@@ -963,6 +1039,7 @@ func (e *Edge) Attr(key, defaultVal string) string {
 ---
 
 ### Spec Item
+
 > `2.8 Shape-to-Handler-Type Mapping`
 
 ### Explanation
@@ -1001,6 +1078,7 @@ var ShapeToType = map[string]string{
 ---
 
 ### Spec Item
+
 > `2.9 Chained Edges`
 
 ### Explanation
@@ -1055,6 +1133,7 @@ if p.cur().kind == tokArrow {
 ---
 
 ### Spec Item
+
 > `2.10 Subgraphs`
 
 ### Explanation
@@ -1097,6 +1176,7 @@ if sub.Label == "" {
 ---
 
 ### Spec Item
+
 > `2.11 Node and Edge Default Blocks`
 
 ### Explanation
@@ -1146,6 +1226,7 @@ case tokEdge:
 ---
 
 ### Spec Item
+
 > `2.12 Class Attribute`
 
 ### Explanation
@@ -1184,6 +1265,7 @@ func deriveClass(label string) string {
 ---
 
 ### Spec Item
+
 > `2.13 Minimal Examples`
 
 ### Explanation
@@ -1215,9 +1297,10 @@ review -> validate  [label="[F] Fix issues"]
 
 ---
 
-## 3.3 Spec Section 3: Pipeline Execution Engine
+## 4.3 Spec Section 3: Pipeline Execution Engine
 
 ### Spec Item
+
 > `3.1 Run Lifecycle`
 
 ### Explanation
@@ -1279,6 +1362,7 @@ func (r *Runner) Run() (*Outcome, error) {
 ---
 
 ### Spec Item
+
 > `3.2 Core Execution Loop`
 
 ### Explanation
@@ -1343,6 +1427,7 @@ for {
 ---
 
 ### Spec Item
+
 > `3.3 Edge Selection Algorithm`
 
 ### Explanation
@@ -1392,6 +1477,7 @@ This closely mirrors the upstream spec and is one of the cleanest parts of the i
 ---
 
 ### Spec Item
+
 > `3.4 Goal Gate Enforcement`
 
 ### Explanation
@@ -1439,6 +1525,7 @@ func checkGoalGates(graph *dot.Graph, outcomes map[string]*Outcome) (bool, *dot.
 ---
 
 ### Spec Item
+
 > `3.5 Retry Logic`
 
 ### Explanation
@@ -1492,6 +1579,7 @@ for attempt := 1; attempt <= policy.maxAttempts; attempt++ {
 ---
 
 ### Spec Item
+
 > `3.6 Retry Policy`
 
 ### Explanation
@@ -1539,6 +1627,7 @@ func buildRetryPolicy(node *dot.Node, graph *dot.Graph) retryPolicy {
 ---
 
 ### Spec Item
+
 > `3.7 Failure Routing`
 
 ### Explanation
@@ -1578,6 +1667,7 @@ func (r *Runner) advance(node *dot.Node, outcome *Outcome, ctx *Context) (*dot.N
 ---
 
 ### Spec Item
+
 > `3.8 Concurrency Model`
 
 ### Explanation
@@ -1622,9 +1712,10 @@ func (h *ParallelHandler) Execute(node *dot.Node, ctx *engine.Context, graph *do
 
 ---
 
-## 3.4 Spec Section 4: Node Handlers
+## 4.4 Spec Section 4: Node Handlers
 
 ### Spec Item
+
 > `4.1 Handler Interface`
 
 ### Explanation
@@ -1658,6 +1749,7 @@ type Handler interface {
 ---
 
 ### Spec Item
+
 > `4.2 Handler Registry`
 
 ### Explanation
@@ -1705,6 +1797,7 @@ func BuildDefaultRegistry(backend CodergenBackend, iv interviewer.Interviewer) *
 ---
 
 ### Spec Item
+
 > `4.3 Start Handler`
 
 ### Explanation
@@ -1730,6 +1823,7 @@ func (h *StartHandler) Execute(node *dot.Node, ctx *engine.Context, graph *dot.G
 ---
 
 ### Spec Item
+
 > `4.4 Exit Handler`
 
 ### Explanation
@@ -1755,6 +1849,7 @@ func (h *ExitHandler) Execute(node *dot.Node, ctx *engine.Context, graph *dot.Gr
 ---
 
 ### Spec Item
+
 > `4.5 Codergen Handler (LLM Task)`
 
 ### Explanation
@@ -1822,6 +1917,7 @@ func (h *CodergenHandler) Execute(node *dot.Node, ctx *engine.Context, graph *do
 ---
 
 ### Spec Item
+
 > `4.5.1 CodergenBackend Interface`
 
 ### Explanation
@@ -1845,6 +1941,7 @@ type CodergenBackend interface {
 ---
 
 ### Spec Item
+
 > `4.6 Wait For Human Handler`
 
 ### Explanation
@@ -1904,6 +2001,7 @@ func (h *WaitForHumanHandler) Execute(node *dot.Node, ctx *engine.Context, graph
 ---
 
 ### Spec Item
+
 > `4.7 Conditional Handler`
 
 ### Explanation
@@ -1938,6 +2036,7 @@ func (h *ConditionalHandler) Execute(node *dot.Node, ctx *engine.Context, graph 
 ---
 
 ### Spec Item
+
 > `4.8 Parallel Handler`
 
 ### Explanation
@@ -1984,6 +2083,7 @@ func (h *ParallelHandler) Execute(node *dot.Node, ctx *engine.Context, graph *do
 ---
 
 ### Spec Item
+
 > `4.9 Fan-In Handler`
 
 ### Explanation
@@ -2021,6 +2121,7 @@ func (h *FanInHandler) Execute(node *dot.Node, ctx *engine.Context, graph *dot.G
 ---
 
 ### Spec Item
+
 > `4.10 Tool Handler`
 
 ### Explanation
@@ -2075,6 +2176,7 @@ func (h *ToolHandler) Execute(node *dot.Node, ctx *engine.Context, graph *dot.Gr
 ---
 
 ### Spec Item
+
 > `4.11 Manager Loop Handler`
 
 ### Explanation
@@ -2109,6 +2211,7 @@ func (h *ManagerLoopHandler) Execute(node *dot.Node, ctx *engine.Context, graph 
 ---
 
 ### Spec Item
+
 > `4.12 Custom Handlers`
 
 ### Explanation
@@ -2139,9 +2242,10 @@ func (r *Registry) Register(typeStr string, h Handler) {
 
 ---
 
-## 3.5 Spec Section 5: State and Context
+## 4.5 Spec Section 5: State and Context
 
 ### Spec Item
+
 > `5.1 Context`
 
 ### Explanation
@@ -2193,6 +2297,7 @@ func (c *Context) Get(key string) string {
 ---
 
 ### Spec Item
+
 > `5.2 Outcome`
 
 ### Explanation
@@ -2232,6 +2337,7 @@ type Outcome struct {
 ---
 
 ### Spec Item
+
 > `5.3 Checkpoint`
 
 ### Explanation
@@ -2281,6 +2387,7 @@ func NewCheckpoint(ctx *Context, currentNode string, completedNodes []string, no
 ---
 
 ### Spec Item
+
 > `5.4 Context Fidelity`
 
 ### Explanation
@@ -2314,6 +2421,7 @@ func checkFidelityValid(graph *dot.Graph) []Diagnostic {
 ---
 
 ### Spec Item
+
 > `5.5 Artifact Store`
 
 ### Explanation
@@ -2362,6 +2470,7 @@ func writeManifest(logsRoot string, graph *dot.Graph) error {
 ---
 
 ### Spec Item
+
 > `5.6 Run Directory Structure`
 
 ### Explanation
@@ -2395,9 +2504,10 @@ if err := os.MkdirAll(stageDir, dirPermissions); err != nil {
 
 ---
 
-## 3.6 Spec Section 6: Human-in-the-Loop (Interviewer Pattern)
+## 4.6 Spec Section 6: Human-in-the-Loop (Interviewer Pattern)
 
 ### Spec Item
+
 > `6.1 Interviewer Interface`
 
 ### Explanation
@@ -2431,6 +2541,7 @@ type Interviewer interface {
 ---
 
 ### Spec Item
+
 > `6.2 Question Model`
 
 ### Explanation
@@ -2457,6 +2568,7 @@ type Question struct {
 ---
 
 ### Spec Item
+
 > `6.3 Answer Model`
 
 ### Explanation
@@ -2491,6 +2603,7 @@ type Answer struct {
 ---
 
 ### Spec Item
+
 > `6.4 Built-In Interviewer Implementations`
 
 ### Explanation
@@ -2547,6 +2660,7 @@ func (a *AutoApproveInterviewer) Ask(q Question) Answer {
 ---
 
 ### Spec Item
+
 > `6.5 Timeout Handling`
 
 ### Explanation
@@ -2588,9 +2702,10 @@ func (h *WaitForHumanHandler) handleTimeout(node *dot.Node) (*engine.Outcome, er
 
 ---
 
-## 3.7 Spec Section 7: Validation and Linting
+## 4.7 Spec Section 7: Validation and Linting
 
 ### Spec Item
+
 > `7.1 Diagnostic Model`
 
 ### Explanation
@@ -2626,6 +2741,7 @@ type Diagnostic struct {
 ---
 
 ### Spec Item
+
 > `7.2 Built-In Lint Rules`
 
 ### Explanation
@@ -2668,6 +2784,7 @@ func Validate(graph *dot.Graph) []Diagnostic {
 ---
 
 ### Spec Item
+
 > `7.3 Validation API`
 
 ### Explanation
@@ -2704,6 +2821,7 @@ func ValidateOrRaise(graph *dot.Graph) ([]Diagnostic, error) {
 ---
 
 ### Spec Item
+
 > `7.4 Custom Lint Rules`
 
 ### Explanation
@@ -2733,9 +2851,10 @@ rules := []func(*dot.Graph) []Diagnostic{
 
 ---
 
-## 3.8 Spec Section 8: Model Stylesheet
+## 4.8 Spec Section 8: Model Stylesheet
 
 ### Spec Item
+
 > `8.1 Overview`
 
 ### Explanation
@@ -2766,6 +2885,7 @@ func (t *StylesheetApplication) Apply(graph *dot.Graph) {
 ---
 
 ### Spec Item
+
 > `8.2 Stylesheet Grammar`
 
 ### Explanation
@@ -2815,6 +2935,7 @@ func Parse(source string) []Rule {
 ---
 
 ### Spec Item
+
 > `8.3 Selectors and Specificity`
 
 ### Explanation
@@ -2870,6 +2991,7 @@ func matches(selector string, node *dot.Node) bool {
 ---
 
 ### Spec Item
+
 > `8.4 Recognized Properties`
 
 ### Explanation
@@ -2903,6 +3025,7 @@ That is flexible, but slightly looser than a stricter spec-driven property contr
 ---
 
 ### Spec Item
+
 > `8.5 Application Order`
 
 ### Explanation
@@ -2942,6 +3065,7 @@ for spec := 0; spec <= 2; spec++ {
 ---
 
 ### Spec Item
+
 > `8.6 Example`
 
 ### Explanation
@@ -2968,9 +3092,10 @@ graph [
 
 ---
 
-## 3.9 Spec Section 9: Transforms and Extensibility
+## 4.9 Spec Section 9: Transforms and Extensibility
 
 ### Spec Item
+
 > `9.1 AST Transforms`
 
 ### Explanation
@@ -3000,6 +3125,7 @@ type Transform interface {
 ---
 
 ### Spec Item
+
 > `9.2 Built-In Transforms`
 
 ### Explanation
@@ -3034,6 +3160,7 @@ That ordering matters because later phases rely on a fully materialized graph.
 ---
 
 ### Spec Item
+
 > `9.3 Custom Transforms`
 
 ### Explanation
@@ -3065,6 +3192,7 @@ func ApplyAll(graph *dot.Graph, transforms []Transform) {
 ---
 
 ### Spec Item
+
 > `9.4 Pipeline Composition`
 
 ### Explanation
@@ -3098,6 +3226,7 @@ func (h *ManagerLoopHandler) Execute(node *dot.Node, ctx *engine.Context, graph 
 ---
 
 ### Spec Item
+
 > `9.5 HTTP Server Mode`
 
 ### Explanation
@@ -3130,6 +3259,7 @@ func main() {
 ---
 
 ### Spec Item
+
 > `9.6 Observability and Events`
 
 ### Explanation
@@ -3185,6 +3315,7 @@ func (e *Emitter) Emit(evt Event) {
 ---
 
 ### Spec Item
+
 > `9.7 Tool Call Hooks`
 
 ### Explanation
@@ -3213,9 +3344,10 @@ func runWithTimeout(command string, timeout time.Duration) ([]byte, error) {
 
 ---
 
-## 3.10 Spec Section 10: Condition Expression Language
+## 4.10 Spec Section 10: Condition Expression Language
 
 ### Spec Item
+
 > `10.1 Overview`
 
 ### Explanation
@@ -3254,6 +3386,7 @@ func EvaluateCondition(condition string, outcome *Outcome, ctx *Context) bool {
 ---
 
 ### Spec Item
+
 > `10.2 Grammar`
 
 ### Explanation
@@ -3298,6 +3431,7 @@ func evaluateClause(clause string, outcome *Outcome, ctx *Context) bool {
 ---
 
 ### Spec Item
+
 > `10.3 Semantics`
 
 ### Explanation
@@ -3353,6 +3487,7 @@ func resolveKey(key string, outcome *Outcome, ctx *Context) string {
 ---
 
 ### Spec Item
+
 > `10.4 Variable Resolution`
 
 ### Explanation
@@ -3370,6 +3505,7 @@ Same `resolveKey()` implementation as above.
 ---
 
 ### Spec Item
+
 > `10.5 Evaluation`
 
 ### Explanation
@@ -3407,6 +3543,7 @@ return true
 ---
 
 ### Spec Item
+
 > `10.6 Examples`
 
 ### Explanation
@@ -3433,6 +3570,7 @@ check -> write_main [label="No",  condition="outcome!=success"]
 ---
 
 ### Spec Item
+
 > `10.7 Extended Operators (Future)`
 
 ### Explanation
@@ -3459,11 +3597,12 @@ File: `internal/engine/condition.go`
 
 ---
 
-## 3.11 Spec Section 11: Definition of Done
+## 4.11 Spec Section 11: Definition of Done
 
 This section is best understood as a parity checklist.
 
 ### Spec Item
+
 > `11.1 DOT Parsing`
 
 ### Implementation in This Repo
@@ -3478,6 +3617,7 @@ This section is best understood as a parity checklist.
 ---
 
 ### Spec Item
+
 > `11.2 Validation and Linting`
 
 ### Implementation in This Repo
@@ -3493,6 +3633,7 @@ This section is best understood as a parity checklist.
 ---
 
 ### Spec Item
+
 > `11.3 Execution Engine`
 
 ### Implementation in This Repo
@@ -3507,6 +3648,7 @@ This section is best understood as a parity checklist.
 ---
 
 ### Spec Item
+
 > `11.4 Goal Gate Enforcement`
 
 ### Implementation in This Repo
@@ -3520,6 +3662,7 @@ This section is best understood as a parity checklist.
 ---
 
 ### Spec Item
+
 > `11.5 Retry Logic`
 
 ### Implementation in This Repo
@@ -3534,6 +3677,7 @@ This section is best understood as a parity checklist.
 ---
 
 ### Spec Item
+
 > `11.6 Node Handlers`
 
 ### Implementation in This Repo
@@ -3548,6 +3692,7 @@ This section is best understood as a parity checklist.
 ---
 
 ### Spec Item
+
 > `11.7 State and Context`
 
 ### Implementation in This Repo
@@ -3562,6 +3707,7 @@ This section is best understood as a parity checklist.
 ---
 
 ### Spec Item
+
 > `11.8 Human-in-the-Loop`
 
 ### Implementation in This Repo
@@ -3576,6 +3722,7 @@ This section is best understood as a parity checklist.
 ---
 
 ### Spec Item
+
 > `11.9 Condition Expressions`
 
 ### Implementation in This Repo
@@ -3589,6 +3736,7 @@ This section is best understood as a parity checklist.
 ---
 
 ### Spec Item
+
 > `11.10 Model Stylesheet`
 
 ### Implementation in This Repo
@@ -3603,6 +3751,7 @@ This section is best understood as a parity checklist.
 ---
 
 ### Spec Item
+
 > `11.11 Transforms and Extensibility`
 
 ### Implementation in This Repo
@@ -3618,6 +3767,7 @@ This section is best understood as a parity checklist.
 ---
 
 ### Spec Item
+
 > `11.12 Cross-Feature Parity Matrix`
 
 ### Explanation
@@ -3643,6 +3793,7 @@ This repository effectively falls into this parity profile:
 ---
 
 ### Spec Item
+
 > `11.13 Integration Smoke Test`
 
 ### Explanation
@@ -3663,9 +3814,10 @@ Closest implementation:
 
 ---
 
-## 3.12 Spec Appendices
+## 4.12 Spec Appendices
 
 ### Spec Item
+
 > `Appendix A: Complete Attribute Reference`
 
 ### Explanation
@@ -3696,6 +3848,7 @@ func (e *Edge) Attr(key, defaultVal string) string { /* ... */ }
 ---
 
 ### Spec Item
+
 > `Appendix B: Shape-to-Handler-Type Mapping`
 
 ### Implementation in This Repo
@@ -3709,6 +3862,7 @@ Already covered by `handler.ShapeToType`.
 ---
 
 ### Spec Item
+
 > `Appendix C: Status File Contract`
 
 ### Explanation
@@ -3742,6 +3896,7 @@ func WriteStatusFile(stageDir string, outcome *Outcome) error {
 ---
 
 ### Spec Item
+
 > `Appendix D: Error Categories`
 
 ### Explanation
@@ -3771,11 +3926,11 @@ return nil, fmt.Errorf("stage %q failed with no outgoing fail edge", node.ID)
 
 ---
 
-## 4. Key Components Deep Dive
+## 5. Key Components Deep Dive
 
 This section now switches from spec mapping to architectural understanding.
 
-## 4.1 `internal/cli`
+## 5.1 `internal/cli`
 
 ### Purpose
 
@@ -3783,15 +3938,15 @@ The CLI package is the interface layer. It is where users interact with the syst
 
 ### Package layout (one file per command / concern)
 
-| File | Role |
-|------|------|
-| `cli.go` | `Main()` — argument routing only |
-| `usage.go` | Embedded `usage.md`, `printUsage` / `usageText`, `version` |
-| `run.go` | `runCmd`, `-var` flag type (`varFlags`), string helpers used by run output |
-| `validate.go` | `validateCmd` |
-| `inspect.go` | `inspectCmd` and run-directory reporting |
-| `list.go` | `listCmd` |
-| `graph.go` | `graphCmd` |
+| File          | Role                                                                       |
+| ------------- | -------------------------------------------------------------------------- |
+| `cli.go`      | `Main()` — argument routing only                                           |
+| `usage.go`    | Embedded `usage.md`, `printUsage` / `usageText`, `version`                 |
+| `run.go`      | `runCmd`, `-var` flag type (`varFlags`), string helpers used by run output |
+| `validate.go` | `validateCmd`                                                              |
+| `inspect.go`  | `inspectCmd` and run-directory reporting                                   |
+| `list.go`     | `listCmd`                                                                  |
+| `graph.go`    | `graphCmd`                                                                 |
 
 This keeps each subcommand isolated (SOLID-friendly) and avoids a single oversized `cli.go`.
 
@@ -3825,7 +3980,7 @@ The CLI owns composition, not execution. That is clean architecture:
 - the engine runs pipelines
 - handlers perform work
 
-## 4.2 `internal/dot`
+## 5.2 `internal/dot`
 
 ### Purpose
 
@@ -3853,7 +4008,7 @@ This package turns DOT text into an executable graph AST.
 - `validate` checks the graph
 - `engine` executes the graph
 
-## 4.3 `internal/transform`
+## 5.3 `internal/transform`
 
 ### Purpose
 
@@ -3869,7 +4024,7 @@ Transform the graph after parsing but before validation/execution.
 
 Without transforms, handlers and validation would need to reason about raw placeholders. Transforms simplify later phases by making the graph "ready to use".
 
-## 4.4 `internal/validate`
+## 5.4 `internal/validate`
 
 ### Purpose
 
@@ -3887,7 +4042,7 @@ Reject invalid graphs early.
 
 It protects the engine from executing malformed workflows and gives users useful diagnostics before a run starts.
 
-## 4.5 `internal/handler`
+## 5.5 `internal/handler`
 
 ### Purpose
 
@@ -3905,7 +4060,7 @@ The engine knows only `NodeHandler`. It never hardcodes business behavior for sp
 
 That makes handlers the main extension seam of the system.
 
-## 4.6 `internal/engine`
+## 5.6 `internal/engine`
 
 ### Purpose
 
@@ -3932,7 +4087,7 @@ Everything important about execution semantics lives here:
 - what counts as a goal gate failure
 - how edge selection works
 
-## 4.7 `internal/interviewer`
+## 5.7 `internal/interviewer`
 
 ### Purpose
 
@@ -3949,7 +4104,7 @@ Abstract human interaction.
 
 It keeps human decisions inside the workflow model instead of hardcoding them in the CLI or handlers.
 
-## 4.8 `internal/event`
+## 5.8 `internal/event`
 
 ### Purpose
 
@@ -3965,7 +4120,7 @@ Provide structured lifecycle events.
 
 The CLI can print progress without the engine knowing anything about terminal output.
 
-## 4.9 `internal/stylesheet`
+## 5.9 `internal/stylesheet`
 
 ### Purpose
 
@@ -3984,11 +4139,11 @@ It lets the graph define model policy in one place instead of duplicating it acr
 
 ---
 
-## 5. End-to-End Example
+## 6. End-to-End Example
 
 We will walk through `examples/gorestspec/init_rest_app.dot`.
 
-### Input
+### 6.1 Input
 
 Command:
 
@@ -3999,7 +4154,7 @@ Command:
   -var first_module="user"
 ```
 
-### Step 1: CLI reads and parses the graph
+### 6.2 Step 1: CLI reads and parses the graph
 
 - `runCmd()` reads the file
 - `dot.Parse()` builds the `Graph`
@@ -4014,13 +4169,13 @@ review -> exit      [label="[A] Approve"]
 review -> validate  [label="[F] Fix issues"]
 ```
 
-### Step 2: Transforms apply
+### 6.3 Step 2: Transforms apply
 
 - `$module_name` and `$first_module` expand through `CustomVariableExpansion`
 - `$goal` expands through `VariableExpansion`
 - stylesheet would apply here if present
 
-### Step 3: Validation runs
+### 6.4 Step 3: Validation runs
 
 - start node exists
 - exit node exists
@@ -4030,14 +4185,14 @@ review -> validate  [label="[F] Fix issues"]
 
 If validation fails, execution never begins.
 
-### Step 4: Engine initializes run state
+### 6.5 Step 4: Engine initializes run state
 
 - create `.jgattractorlogs/init_rest_app/`
 - write `manifest.json`
 - create a new `Context`
 - emit `pipeline.started`
 
-### Step 5: Start node executes
+### 6.6 Step 5: Start node executes
 
 `StartHandler` returns success immediately.
 
@@ -4048,7 +4203,7 @@ Stage directory:
   status.json
 ```
 
-### Step 6: Codergen nodes execute in sequence
+### 6.7 Step 6: Codergen nodes execute in sequence
 
 For `write_main`, the codergen handler:
 
@@ -4072,7 +4227,7 @@ Result:
 }
 ```
 
-### Step 7: Conditional routing happens at `check`
+### 6.8 Step 7: Conditional routing happens at `check`
 
 If the previous node’s outcome is success:
 
@@ -4082,7 +4237,7 @@ check -> review [condition="outcome=success"]
 
 The engine evaluates the condition through `EvaluateCondition()` and takes that edge.
 
-### Step 8: Human approval occurs at `review`
+### 6.9 Step 8: Human approval occurs at `review`
 
 Because the run uses `-auto-approve`, `AutoApproveInterviewer` selects the first option:
 
@@ -4090,13 +4245,13 @@ Because the run uses `-auto-approve`, `AutoApproveInterviewer` selects the first
 
 That sends execution to `exit`.
 
-### Step 9: Goal gate enforcement occurs before final exit
+### 6.10 Step 9: Goal gate enforcement occurs before final exit
 
 The `validate` node is marked `goal_gate=true`.
 
 That means even if the graph reaches `exit`, the engine checks whether `validate` succeeded before allowing the pipeline to finish.
 
-### Step 10: Final output
+### 6.11 Step 10: Final output
 
 The engine emits:
 
@@ -4106,7 +4261,7 @@ The engine emits:
 
 And the CLI prints a summary.
 
-### Full conceptual trace
+### 6.12 Full conceptual trace
 
 ```text
 read DOT
@@ -4125,9 +4280,9 @@ read DOT
 
 ---
 
-## 6. Design Insights
+## 7. Design Insights
 
-## 6.1 Why this architecture was chosen
+## 7.1 Why this architecture was chosen
 
 This repository follows a layered design that matches the problem nicely:
 
@@ -4146,7 +4301,7 @@ That is a strong decomposition because each package answers a different question
 - How do we perform that step?
 - How do we expose this to a human?
 
-## 6.2 Strengths
+## 7.2 Strengths
 
 ### 1. Clear execution model
 
@@ -4170,7 +4325,7 @@ The filesystem log structure plus `inspect` / `list` / `graph` makes runs easy t
 
 Every node kind returns the same `Outcome` shape, which dramatically simplifies orchestration.
 
-## 6.3 Weaknesses and limitations
+## 7.3 Weaknesses and limitations
 
 ### 1. Parallel execution is mostly conceptual
 
@@ -4193,7 +4348,7 @@ Especially:
 
 The stylesheet applies arbitrary properties without a tighter semantic contract.
 
-## 6.4 How I would extend it
+## 7.4 How I would extend it
 
 ### To make it closer to the full Attractor spec
 
@@ -4217,7 +4372,7 @@ The stylesheet applies arbitrary properties without a tighter semantic contract.
 
 ---
 
-## 7. Re-Implementing Attractor From Scratch: The Minimum Blueprint
+## 8. Re-Implementing Attractor From Scratch: The Minimum Blueprint
 
 If you wanted to rebuild this from scratch, implement in this order:
 
@@ -4273,7 +4428,7 @@ This repository is a very good reference for that build order because its archit
 
 ---
 
-## 8. Final Takeaways
+## 9. Final Takeaways
 
 By this point, you should understand the central Attractor idea:
 
@@ -4310,7 +4465,7 @@ That sequence gives you the fastest path to understanding how this repo turns a 
 
 ---
 
-## 9. Suggested Next Reading Order Inside This Repo
+## 10. Suggested Next Reading Order Inside This Repo
 
 If you want to continue learning by reading code in the IDE, use this order:
 
@@ -4337,9 +4492,8 @@ That reading order goes from easiest mental model to deepest runtime details.
 
 ---
 
-## 10. Source References
+## 11. Source References
 
 - [Attractor Specification](https://github.com/strongdm/attractor/blob/main/attractor-spec.md)
 - [Jungle Green Attractor README](README.md)
 - Example pipeline: `examples/gorestspec/init_rest_app.dot`
-
