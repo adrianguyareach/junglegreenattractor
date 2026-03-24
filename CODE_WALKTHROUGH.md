@@ -503,7 +503,37 @@ This is the heart of the repository.
 
 ## 4. Specification → Implementation Mapping (Critical)
 
-This is the main section of the walkthrough.
+This is the most important section in the document.
+
+If you are a junior engineer, read this section as:
+
+1. "What idea is the spec talking about?"
+2. "Where is that idea implemented in this repo?"
+3. "Is it fully built, partly built, or missing?"
+
+You do **not** need to understand the whole upstream spec before reading this section. Use this section as a map from big idea -> file -> current status.
+
+### How to read this section quickly
+
+- Read `4.1` first to understand the big picture.
+- Read `4.2` to understand how DOT files become data structures.
+- Read `4.3` to understand how a pipeline actually runs.
+- Read `4.4` to understand what each node type does.
+- Read `4.5` and `4.6` to understand state and human interaction.
+- Skim the later sections on first pass, then come back when you need the detail.
+
+### Vocabulary decoder
+
+| Spec term | Simple meaning |
+|---|---|
+| DSL | The text format users write (`.dot`) |
+| Transform | A cleanup or rewrite step before validation/execution |
+| Handler | The Go code that runs one node |
+| Outcome | The result a node returns |
+| Context | Shared runtime data between stages |
+| Goal gate | A stage that must succeed before exit is allowed |
+| Fidelity | How much detail is kept when carrying context forward |
+| Extensibility | How easy it is to add new behavior later |
 
 The upstream Attractor spec is broad. This repository implements a large, useful subset of it, especially:
 
@@ -539,12 +569,14 @@ For implementation-level guidance on how to close these gaps, see `CODERGEN.md`,
 
 ## 4.1 Spec Section 1: Overview and Goals
 
-### Spec Item
+Quick takeaway: this section explains the big ideas behind Attractor and shows how this repository turns those ideas into a real Go application.
+
+### What The Spec Covers
 
 > `1. Overview and Goals`  
 > `1.1 Problem Statement`
 
-### Explanation
+### In Plain English
 
 Attractor exists so that AI workflows can be declared as graphs instead of hand-written orchestration code.
 
@@ -554,7 +586,7 @@ The big idea is:
 - the control flow should be deterministic
 - execution behavior should come from node/edge metadata, not from deeply nested code
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `README.md`  
 Repository description:
@@ -565,7 +597,7 @@ A DOT-based pipeline runner that uses directed graphs (defined in Graphviz DOT s
 Each node in the graph is an AI task (LLM call, human review, conditional branch, parallel fan-out, etc.) and edges define the flow between them.
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - this repo is explicitly positioned as a DOT-based workflow engine
 - it maps Attractor’s abstract language into a concrete Go CLI
@@ -575,17 +607,17 @@ Each node in the graph is an AI task (LLM call, human review, conditional branch
   - validate
   - execute
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `1.2 Why DOT Syntax`
 
-### Explanation
+### In Plain English
 
 The spec chooses DOT because it already has:
 
@@ -596,7 +628,7 @@ The spec chooses DOT because it already has:
 
 That means you can express complex control flow without inventing a custom workflow language from scratch.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/dot/parser.go`  
 Function: `Parse`
@@ -612,7 +644,7 @@ func Parse(source string) (*Graph, error) {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - `lex(source)` turns the DOT text into tokens
 - `parser{tokens: tokens}` builds a parser over those tokens
@@ -620,17 +652,17 @@ func Parse(source string) (*Graph, error) {
 
 This is where DOT stops being text and starts being executable structure.
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `1.3 Design Principles`
 
-### Explanation
+### In Plain English
 
 The spec emphasizes:
 
@@ -639,7 +671,7 @@ The spec emphasizes:
 - extensibility through handlers/transforms
 - backend independence
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/handler/registry.go`  
 Function: `(*Registry).Resolve`
@@ -663,7 +695,7 @@ func (r *Registry) Resolve(node *dot.Node) Handler {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - nodes do not hardcode behavior in the engine
 - they resolve through metadata:
@@ -672,23 +704,23 @@ func (r *Registry) Resolve(node *dot.Node) Handler {
   - otherwise default handler
 - this makes the system extensible without rewriting the core loop
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `1.4 Layering and LLM Backends`
 
-### Explanation
+### In Plain English
 
 The spec wants workflow orchestration to be independent of the specific LLM provider.
 
 That means the engine should not know about OpenAI, Anthropic, Gemini, or any specific SDK. It should depend on an interface.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/handler/registry.go`  
 Interface: `CodergenBackend`
@@ -699,7 +731,7 @@ type CodergenBackend interface {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - the backend receives:
   - the node
@@ -708,7 +740,7 @@ type CodergenBackend interface {
 - it returns an `Outcome`, not raw provider-specific output
 - that keeps the engine and handlers provider-agnostic
 
-### Status
+### Current Status
 
 `Implemented`
 
@@ -716,11 +748,13 @@ type CodergenBackend interface {
 
 ## 4.2 Spec Section 2: DOT DSL Schema
 
-### Spec Item
+Quick takeaway: this section explains how the `.dot` file format is parsed and what parts of that format this repo currently supports.
+
+### What The Spec Covers
 
 > `2.1 Supported Subset`
 
-### Explanation
+### In Plain English
 
 The spec does not require a full Graphviz implementation. It requires a **constrained, executable subset**.
 
@@ -731,7 +765,7 @@ That is a smart choice:
 - more predictable semantics
 - fewer ambiguous constructs
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/dot/parser.go`  
 Functions: `parseGraph`, `parseStatements`, `parseNodeOrEdge`
@@ -754,24 +788,24 @@ func (p *parser) parseGraph() (*Graph, error) {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - the parser only accepts `digraph`
 - it does not attempt to support the entire Graphviz language
 - it initializes graph/node/edge defaults explicitly
 - it parses only the statement categories the runtime actually understands
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `2.2 BNF-Style Grammar`
 
-### Explanation
+### In Plain English
 
 The spec defines a grammar so that:
 
@@ -779,7 +813,7 @@ The spec defines a grammar so that:
 - users know what constructs are legal
 - validation has a stable AST to work from
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/dot/parser.go`  
 Function: `parseAttrBlock`
@@ -819,24 +853,24 @@ func (p *parser) parseAttrBlock() (map[string]string, error) {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - expects `[` then repeated `key=value` entries
 - tolerates commas and semicolons between attributes
 - fails fast on malformed syntax
 - produces a simple `map[string]string` that the rest of the system can consume
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `2.3 Key Constraints`
 
-### Explanation
+### In Plain English
 
 The spec constrains the language so execution is predictable:
 
@@ -844,7 +878,7 @@ The spec constrains the language so execution is predictable:
 - directed edges only
 - executable semantics attached to node and edge attributes
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/dot/parser.go`  
 Function: `parseGraph`
@@ -855,29 +889,29 @@ if _, err := p.expect(tokDigraph); err != nil {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - a file must begin with `digraph`
 - the parser is intentionally opinionated
 - this keeps the DSL aligned with Attractor’s execution model
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `2.4 Value Types`
 
-### Explanation
+### In Plain English
 
 The spec uses simple attribute values so that the language is easy to parse and easy to serialize.
 
 This repository stores attribute values as strings and interprets them later.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/dot/ast.go`  
 Types: `Graph`, `Node`, `Edge`
@@ -903,7 +937,7 @@ type Edge struct {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - all metadata is stored as stringly-typed attributes
 - interpretation happens later:
@@ -912,17 +946,17 @@ type Edge struct {
   - `goal_gate` is checked as `"true"`
 - that design keeps parsing simple and pushes semantics into later layers
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `2.5 Graph-Level Attributes`
 
-### Explanation
+### In Plain English
 
 Graph-level attributes configure the run globally:
 
@@ -932,7 +966,7 @@ Graph-level attributes configure the run globally:
 - default retry policy
 - retry target
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/dot/ast.go`  
 Method: `(*Graph).GraphAttr`
@@ -957,7 +991,7 @@ func mirrorGraphAttributes(graph *dot.Graph, ctx *Context) {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - `GraphAttr()` is the read API for graph metadata
 - `mirrorGraphAttributes()` copies graph metadata into runtime context
@@ -967,17 +1001,17 @@ func mirrorGraphAttributes(graph *dot.Graph, ctx *Context) {
   - goal gate handling
   - retry behavior
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `2.6 Node Attributes`
 
-### Explanation
+### In Plain English
 
 Node attributes configure how one stage behaves:
 
@@ -990,7 +1024,7 @@ Node attributes configure how one stage behaves:
 - timeout
 - class
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/dot/ast.go`  
 Method: `(*Node).Attr`
@@ -1004,29 +1038,29 @@ func (n *Node) Attr(key, defaultVal string) string {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - node attributes are accessed uniformly via `Attr()`
 - the engine and handlers do not reach into `Attrs` directly unless doing bulk transforms
 - that gives the code a stable read abstraction over the raw parsed metadata
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `2.7 Edge Attributes`
 
-### Explanation
+### In Plain English
 
 Edge attributes control routing and priority.
 
 This is one of the most important Attractor ideas: edges are not just arrows; they encode execution policy.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/dot/ast.go`  
 Method: `(*Edge).Attr`
@@ -1040,21 +1074,21 @@ func (e *Edge) Attr(key, defaultVal string) string {
 }
 ```
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `2.8 Shape-to-Handler-Type Mapping`
 
-### Explanation
+### In Plain English
 
 The spec maps DOT shapes to runtime behavior. This is a key bridge between visualization and execution.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/handler/registry.go`  
 Variable: `ShapeToType`
@@ -1073,23 +1107,23 @@ var ShapeToType = map[string]string{
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - every supported shape has a semantic meaning
 - the registry uses this mapping to resolve which handler to execute
 - this keeps the graph readable: the shape is not just visual decoration
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `2.9 Chained Edges`
 
-### Explanation
+### In Plain English
 
 Chained edges let authors write:
 
@@ -1099,7 +1133,7 @@ A -> B -> C
 
 instead of writing two separate edges manually.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/dot/parser.go`  
 Function: `parseNodeOrEdge`
@@ -1126,7 +1160,7 @@ if p.cur().kind == tokArrow {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - collect all nodes in the chain
 - optionally parse one shared attribute block
@@ -1134,21 +1168,21 @@ if p.cur().kind == tokArrow {
   - `A -> B`
   - `B -> C`
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `2.10 Subgraphs`
 
-### Explanation
+### In Plain English
 
 Subgraphs are useful for grouping nodes and applying shared meaning, including class derivation.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/dot/parser.go`  
 Function: `parseSubgraph`
@@ -1171,30 +1205,30 @@ if sub.Label == "" {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - subgraphs have their own local defaults
 - parser saves outer defaults, enters subgraph scope, then restores the previous defaults
 - the implementation also derives a `class` from the subgraph label and applies it to nodes
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `2.11 Node and Edge Default Blocks`
 
-### Explanation
+### In Plain English
 
 Default blocks let authors set shared defaults once:
 
 - `node [shape=box]`
 - `edge [weight=1]`
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/dot/parser.go`  
 Functions: `parseStatements`, `parseNodeOrEdge`
@@ -1221,27 +1255,27 @@ case tokEdge:
 	}
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - `node [...]` updates parser-level node defaults
 - `edge [...]` updates parser-level edge defaults
 - later nodes and edges copy those defaults unless overridden
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `2.12 Class Attribute`
 
-### Explanation
+### In Plain English
 
 The `class` attribute supports stylesheet-style matching.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/dot/parser.go`  
 Function: `deriveClass`
@@ -1260,27 +1294,27 @@ func deriveClass(label string) string {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - labels become normalized CSS-like class names
 - that allows selectors such as `.critical-review`
 - this is used during stylesheet application
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `2.13 Minimal Examples`
 
-### Explanation
+### In Plain English
 
 The spec includes small examples so the mental model is concrete.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `examples/gorestspec/init_rest_app.dot`
 
@@ -1292,14 +1326,14 @@ review -> exit      [label="[A] Approve"]
 review -> validate  [label="[F] Fix issues"]
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - linear happy-path flow from `start` to `check`
 - conditional branching based on the stage outcome
 - human approval gate before exit
 - fix loop that routes back to validation
 
-### Status
+### Current Status
 
 `Implemented`
 
@@ -1307,11 +1341,13 @@ review -> validate  [label="[F] Fix issues"]
 
 ## 4.3 Spec Section 3: Pipeline Execution Engine
 
-### Spec Item
+Quick takeaway: this section explains the runtime loop, which is the part of the system that actually moves from one node to the next.
+
+### What The Spec Covers
 
 > `3.1 Run Lifecycle`
 
-### Explanation
+### In Plain English
 
 The spec describes the lifecycle as:
 
@@ -1321,7 +1357,7 @@ The spec describes the lifecycle as:
 4. record state
 5. finish cleanly
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/engine/engine.go`  
 Function: `Run`
@@ -1353,7 +1389,7 @@ func (r *Runner) Run() (*Outcome, error) {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - initialize context
 - mirror graph metadata into context
@@ -1363,17 +1399,17 @@ func (r *Runner) Run() (*Outcome, error) {
 - locate start node
 - enter the execution loop
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `3.2 Core Execution Loop`
 
-### Explanation
+### In Plain English
 
 This is the most important part of Attractor. The engine repeatedly:
 
@@ -1381,7 +1417,7 @@ This is the most important part of Attractor. The engine repeatedly:
 - records the outcome
 - decides the next node
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/engine/engine.go`  
 Function: `runLoop`
@@ -1420,7 +1456,7 @@ for {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - `isTerminal()` checks whether execution should stop
 - `stageDir` creates ordered stage folders like `006_write_main`
@@ -1428,23 +1464,23 @@ for {
 - `recordOutcome()` persists status and checkpoint
 - `advance()` applies the routing algorithm
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `3.3 Edge Selection Algorithm`
 
-### Explanation
+### In Plain English
 
 The spec requires deterministic edge selection after a node finishes.
 
 That matters because a workflow engine must never be ambiguous about "what happens next?"
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/engine/edge.go`  
 Function: `selectEdge`
@@ -1469,7 +1505,7 @@ func selectEdge(node *dot.Node, outcome *Outcome, ctx *Context, graph *dot.Graph
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - step 1: match edges whose `condition` evaluates true
 - step 2: use `PreferredLabel` if the handler provided one
@@ -1478,17 +1514,17 @@ func selectEdge(node *dot.Node, outcome *Outcome, ctx *Context, graph *dot.Graph
 
 This closely mirrors the upstream spec and is one of the cleanest parts of the implementation.
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `3.4 Goal Gate Enforcement`
 
-### Explanation
+### In Plain English
 
 A goal gate says:
 
@@ -1496,7 +1532,7 @@ A goal gate says:
 
 This prevents the graph from reaching `exit` while an important quality gate failed.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/engine/graph.go`  
 Function: `checkGoalGates`
@@ -1519,28 +1555,28 @@ func checkGoalGates(graph *dot.Graph, outcomes map[string]*Outcome) (bool, *dot.
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - inspect every completed node
 - keep only nodes marked `goal_gate=true`
 - allow success or partial success
 - if any goal gate failed, block exit
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `3.5 Retry Logic`
 
-### Explanation
+### In Plain English
 
 The spec requires bounded retries for transient failure or explicit retry outcomes.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/engine/engine.go`  
 Function: `executeWithRetry`
@@ -1571,7 +1607,7 @@ for attempt := 1; attempt <= policy.maxAttempts; attempt++ {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - execute the handler
 - return immediately on success
@@ -1580,21 +1616,21 @@ for attempt := 1; attempt <= policy.maxAttempts; attempt++ {
 - stop when the retry budget is exhausted
 - optionally downgrade to `partial_success`
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `3.6 Retry Policy`
 
-### Explanation
+### In Plain English
 
 The spec requires retry configuration to be explicit and bounded.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/engine/retry.go`  
 Functions: `buildRetryPolicy`, `delayForAttempt`
@@ -1621,28 +1657,28 @@ func buildRetryPolicy(node *dot.Node, graph *dot.Graph) retryPolicy {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - node-specific retries override the graph default
 - `maxAttempts` is `retries + 1` because the first execution is not a retry
 - exponential backoff is built into `delayForAttempt`
 - there is a hard max delay
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `3.7 Failure Routing`
 
-### Explanation
+### In Plain English
 
 The spec wants failures to still participate in graph routing, not just crash the program blindly.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/engine/engine.go`  
 Function: `advance`
@@ -1660,7 +1696,7 @@ func (r *Runner) advance(node *dot.Node, outcome *Outcome, ctx *Context) (*dot.N
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - the engine always tries to route through edges first
 - if no edge matches:
@@ -1668,21 +1704,21 @@ func (r *Runner) advance(node *dot.Node, outcome *Outcome, ctx *Context) (*dot.N
   - failed stage => error
 - so failure can be modeled in the graph, but missing failure handling is treated as a problem
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `3.8 Concurrency Model`
 
-### Explanation
+### In Plain English
 
 The spec discusses parallel branches and concurrency behavior.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/handler/parallel.go`
 
@@ -1708,13 +1744,13 @@ func (h *ParallelHandler) Execute(node *dot.Node, ctx *engine.Context, graph *do
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - the API surface for parallelism exists
 - the handler records branch metadata in context
 - but the implementation is explicit that this is **sequential simulation**, not true concurrency
 
-### Status
+### Current Status
 
 `Partially implemented`
 
@@ -1722,17 +1758,19 @@ func (h *ParallelHandler) Execute(node *dot.Node, ctx *engine.Context, graph *do
 
 ## 4.4 Spec Section 4: Node Handlers
 
-### Spec Item
+Quick takeaway: this section explains what each node type actually does when the engine reaches it.
+
+### What The Spec Covers
 
 > `4.1 Handler Interface`
 
-### Explanation
+### In Plain English
 
 A handler is the unit of work that executes one node.
 
 The engine should not know handler details; it should only know the contract.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/handler/registry.go`
 
@@ -1742,7 +1780,7 @@ type Handler interface {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - every handler gets the current node
 - every handler can inspect shared context
@@ -1750,24 +1788,24 @@ type Handler interface {
 - every handler knows where stage artifacts should be written
 - every handler returns a normalized `Outcome`
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `4.2 Handler Registry`
 
-### Explanation
+### In Plain English
 
 The registry decouples:
 
 - graph node metadata
 - concrete Go handler instances
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/handler/default_registry.go`
 
@@ -1792,27 +1830,27 @@ func BuildDefaultRegistry(backend CodergenBackend, iv interviewer.Interviewer) *
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - registry wiring happens once per run
 - dependencies are injected at registration time
 - custom handler types can be added without changing engine code
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `4.3 Start Handler`
 
-### Explanation
+### In Plain English
 
 The start node exists to mark entry. It is usually a no-op.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/handler/passthrough.go`
 
@@ -1824,21 +1862,21 @@ func (h *StartHandler) Execute(node *dot.Node, ctx *engine.Context, graph *dot.G
 }
 ```
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `4.4 Exit Handler`
 
-### Explanation
+### In Plain English
 
 The exit node marks successful termination. It is also usually a no-op.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/handler/passthrough.go`
 
@@ -1850,17 +1888,17 @@ func (h *ExitHandler) Execute(node *dot.Node, ctx *engine.Context, graph *dot.Gr
 }
 ```
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `4.5 Codergen Handler (LLM Task)`
 
-### Explanation
+### In Plain English
 
 This is the main "AI work" handler:
 
@@ -1869,7 +1907,7 @@ This is the main "AI work" handler:
 - persist artifacts
 - return normalized outcome
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/handler/codergen.go`  
 Function: `(*CodergenHandler).Execute`
@@ -1909,7 +1947,7 @@ func (h *CodergenHandler) Execute(node *dot.Node, ctx *engine.Context, graph *do
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - `resolvePrompt()` expands the node prompt and `$goal`
 - prompt is persisted as `prompt.md`
@@ -1918,21 +1956,21 @@ func (h *CodergenHandler) Execute(node *dot.Node, ctx *engine.Context, graph *do
 - the result is normalized into `Outcome`
 - `status.json` is written for the stage
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `4.5.1 CodergenBackend Interface`
 
-### Explanation
+### In Plain English
 
 The backend abstraction isolates the orchestration layer from the model provider.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/handler/registry.go`
 
@@ -1942,21 +1980,21 @@ type CodergenBackend interface {
 }
 ```
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `4.6 Wait For Human Handler`
 
-### Explanation
+### In Plain English
 
 This handler pauses the graph and asks a human which edge to take.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/handler/human.go`  
 Function: `(*WaitForHumanHandler).Execute`
@@ -1995,28 +2033,28 @@ func (h *WaitForHumanHandler) Execute(node *dot.Node, ctx *engine.Context, graph
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - outgoing edges become user-visible options
 - the interviewer abstraction is used to ask the question
 - timeout and skip are explicit states
 - a successful choice returns `SuggestedNextIDs`, which the edge selector can honor
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `4.7 Conditional Handler`
 
-### Explanation
+### In Plain English
 
 A conditional node usually does not perform work itself. It simply exists as a semantic routing point.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/handler/passthrough.go`
 
@@ -2031,27 +2069,27 @@ func (h *ConditionalHandler) Execute(node *dot.Node, ctx *engine.Context, graph 
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - handler does almost nothing
 - the real decision happens in `engine.selectEdge()`
 - this is a nice example of separating control-flow semantics from execution semantics
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `4.8 Parallel Handler`
 
-### Explanation
+### In Plain English
 
 The spec describes fan-out across multiple branches.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/handler/parallel.go`
 
@@ -2078,27 +2116,27 @@ func (h *ParallelHandler) Execute(node *dot.Node, ctx *engine.Context, graph *do
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - the handler acknowledges parallel branches
 - it records metadata in context
 - but it does not actually launch independent concurrent executions
 
-### Status
+### Current Status
 
 `Partially implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `4.9 Fan-In Handler`
 
-### Explanation
+### In Plain English
 
 Fan-in should merge branch results back into one logical continuation point.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/handler/parallel.go`
 
@@ -2116,27 +2154,27 @@ func (h *FanInHandler) Execute(node *dot.Node, ctx *engine.Context, graph *dot.G
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - the semantic surface exists
 - there is no real branch-result merge logic yet
 - current implementation is a placeholder success marker
 
-### Status
+### Current Status
 
 `Partially implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `4.10 Tool Handler`
 
-### Explanation
+### In Plain English
 
 The tool handler lets a graph execute shell commands as stages.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/handler/tool.go`
 
@@ -2169,7 +2207,7 @@ func (h *ToolHandler) Execute(node *dot.Node, ctx *engine.Context, graph *dot.Gr
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - reads `tool_command` from the node
 - parses timeout from node metadata
@@ -2177,21 +2215,21 @@ func (h *ToolHandler) Execute(node *dot.Node, ctx *engine.Context, graph *dot.Gr
 - captures combined output
 - exposes output in context so later stages can use it
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `4.11 Manager Loop Handler`
 
-### Explanation
+### In Plain English
 
 The spec discusses a manager/supervisor loop for child workflows.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/handler/passthrough.go`
 
@@ -2206,27 +2244,27 @@ func (h *ManagerLoopHandler) Execute(node *dot.Node, ctx *engine.Context, graph 
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - the handler type exists
 - it is currently a stub
 - there is no child-pipeline supervision logic yet
 
-### Status
+### Current Status
 
 `Partially implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `4.12 Custom Handlers`
 
-### Explanation
+### In Plain English
 
 The spec expects new handlers to be addable without changing the engine.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/handler/registry.go`
 
@@ -2236,7 +2274,7 @@ func (r *Registry) Register(typeStr string, h Handler) {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - extensibility is registry-based
 - adding a new handler means:
@@ -2244,7 +2282,7 @@ func (r *Registry) Register(typeStr string, h Handler) {
   - register it under a type string
   - reference it from a node’s `type`
 
-### Status
+### Current Status
 
 `Implemented`
 
@@ -2252,17 +2290,19 @@ func (r *Registry) Register(typeStr string, h Handler) {
 
 ## 4.5 Spec Section 5: State and Context
 
-### Spec Item
+Quick takeaway: this section explains what data the system remembers while a pipeline is running and after it finishes.
+
+### What The Spec Covers
 
 > `5.1 Context`
 
-### Explanation
+### In Plain English
 
 Context is shared runtime state across stages.
 
 It is how one stage communicates useful facts to the next stage without mutating the graph definition itself.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/engine/context.go`
 
@@ -2286,7 +2326,7 @@ func (c *Context) Get(key string) string {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - `sync.RWMutex` protects concurrent access
 - `values` stores the shared key-value data
@@ -2298,23 +2338,23 @@ func (c *Context) Get(key string) string {
   - clone
   - apply updates
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `5.2 Outcome`
 
-### Explanation
+### In Plain English
 
 Outcome is the normalized result shape for every stage.
 
 This is critical because it gives the engine one common language regardless of handler type.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/engine/outcome.go`
 
@@ -2329,7 +2369,7 @@ type Outcome struct {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - `Status` drives retry and routing
 - `PreferredLabel` helps edge selection
@@ -2338,21 +2378,21 @@ type Outcome struct {
 - `Notes` captures human-readable explanation
 - `FailureReason` surfaces why a stage failed
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `5.3 Checkpoint`
 
-### Explanation
+### In Plain English
 
 Checkpoints allow a run to persist enough state to inspect or resume later.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/engine/checkpoint.go`
 
@@ -2378,7 +2418,7 @@ func NewCheckpoint(ctx *Context, currentNode string, completedNodes []string, no
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - checkpoint captures both control state and data state
 - this includes:
@@ -2388,21 +2428,21 @@ func NewCheckpoint(ctx *Context, currentNode string, completedNodes []string, no
   - context snapshot
   - warning log entries
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `5.4 Context Fidelity`
 
-### Explanation
+### In Plain English
 
 The spec discusses different levels of context fidelity and how much data should be carried forward.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/validate/rules.go`
 
@@ -2417,26 +2457,26 @@ func checkFidelityValid(graph *dot.Graph) []Diagnostic {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - the repo validates allowed fidelity values
 - but it does **not** implement a full runtime fidelity system that changes artifact retention or context projection
 
-### Status
+### Current Status
 
 `Partially implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `5.5 Artifact Store`
 
-### Explanation
+### In Plain English
 
 The spec describes a generalized artifact store abstraction.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 Closest implementation: filesystem-backed stage artifacts in the engine and codergen handler.
 
@@ -2460,7 +2500,7 @@ func writeManifest(logsRoot string, graph *dot.Graph) error {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - artifacts are stored directly on disk
 - there is no separate `ArtifactStore` interface yet
@@ -2471,21 +2511,21 @@ func writeManifest(logsRoot string, graph *dot.Graph) error {
   - response
   - status
 
-### Status
+### Current Status
 
 `Partially implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `5.6 Run Directory Structure`
 
-### Explanation
+### In Plain English
 
 The spec expects a stable run directory layout so tools and humans can inspect runs consistently.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/engine/engine.go`  
 Function: `runLoop`
@@ -2498,7 +2538,7 @@ if err := os.MkdirAll(stageDir, dirPermissions); err != nil {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - each stage gets an ordered folder:
   - `001_start`
@@ -2506,7 +2546,7 @@ if err := os.MkdirAll(stageDir, dirPermissions); err != nil {
 - this makes runs easy to inspect visually
 - the `inspect` CLI command relies on this structure
 
-### Status
+### Current Status
 
 `Implemented`
 
@@ -2514,15 +2554,17 @@ if err := os.MkdirAll(stageDir, dirPermissions); err != nil {
 
 ## 4.6 Spec Section 6: Human-in-the-Loop (Interviewer Pattern)
 
-### Spec Item
+Quick takeaway: this section explains how the workflow asks a human for input without hardcoding terminal I/O into the engine.
+
+### What The Spec Covers
 
 > `6.1 Interviewer Interface`
 
-### Explanation
+### In Plain English
 
 The engine should not read from stdin directly. Human interaction should go through an abstraction.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/interviewer/types.go`
 
@@ -2533,7 +2575,7 @@ type Interviewer interface {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - `Ask()` gathers a decision
 - `Inform()` is a side-channel for one-way messages
@@ -2542,21 +2584,21 @@ type Interviewer interface {
   - auto-approve mode
   - queue-based testing
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `6.2 Question Model`
 
-### Explanation
+### In Plain English
 
 Questions need structure so the same handler logic can drive different UIs.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/interviewer/types.go`
 
@@ -2569,21 +2611,21 @@ type Question struct {
 }
 ```
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `6.3 Answer Model`
 
-### Explanation
+### In Plain English
 
 Answers must represent both normal user choices and special states such as timeout or skip.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/interviewer/types.go`
 
@@ -2604,21 +2646,21 @@ type Answer struct {
 }
 ```
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `6.4 Built-In Interviewer Implementations`
 
-### Explanation
+### In Plain English
 
 The spec wants multiple interviewer implementations for different environments.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/interviewer/console.go`
 
@@ -2655,27 +2697,27 @@ func (a *AutoApproveInterviewer) Ask(q Question) Answer {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - `ConsoleInterviewer` is real interactive mode
 - `AutoApproveInterviewer` is CI / unattended mode
 - `QueueInterviewer` exists too, mainly useful for tests
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `6.5 Timeout Handling`
 
-### Explanation
+### In Plain English
 
 Human waiting cannot be infinite in every environment. Timeout needs a defined behavior.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/handler/human.go`
 
@@ -2698,13 +2740,13 @@ func (h *WaitForHumanHandler) handleTimeout(node *dot.Node) (*engine.Outcome, er
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - if a default choice exists, the workflow can continue
 - otherwise the stage returns `retry`
 - that cleanly integrates with engine retry logic
 
-### Status
+### Current Status
 
 `Implemented`
 
@@ -2712,15 +2754,17 @@ func (h *WaitForHumanHandler) handleTimeout(node *dot.Node) (*engine.Outcome, er
 
 ## 4.7 Spec Section 7: Validation and Linting
 
-### Spec Item
+Quick takeaway: this section explains how the repo catches bad pipelines early, before execution starts.
+
+### What The Spec Covers
 
 > `7.1 Diagnostic Model`
 
-### Explanation
+### In Plain English
 
 Validation findings must be structured, not just free-form strings.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/validate/validate.go`
 
@@ -2735,28 +2779,28 @@ type Diagnostic struct {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - `Rule` tells you which validator fired
 - `Severity` separates blocking errors from warnings
 - `NodeID` and `Edge` point to the faulty graph element
 - `Fix` helps the user recover
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `7.2 Built-In Lint Rules`
 
-### Explanation
+### In Plain English
 
 The spec expects a baseline rule set that catches invalid pipelines before execution.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/validate/validate.go`
 
@@ -2779,30 +2823,30 @@ func Validate(graph *dot.Graph) []Diagnostic {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - validation is assembled as an ordered rule list
 - each rule is a focused function
 - diagnostics are aggregated into one report
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `7.3 Validation API`
 
-### Explanation
+### In Plain English
 
 Validation should be usable in two ways:
 
 - get all diagnostics
 - fail fast if any blocking errors exist
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/validate/validate.go`
 
@@ -2822,21 +2866,21 @@ func ValidateOrRaise(graph *dot.Graph) ([]Diagnostic, error) {
 }
 ```
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `7.4 Custom Lint Rules`
 
-### Explanation
+### In Plain English
 
 The spec discusses extensible validation beyond built-in rules.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 Closest implementation: rule list inside `Validate`.
 
@@ -2848,12 +2892,12 @@ rules := []func(*dot.Graph) []Diagnostic{
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - the structure is friendly to extension
 - but there is no exported registration API for external rule injection yet
 
-### Status
+### Current Status
 
 `Partially implemented`
 
@@ -2861,15 +2905,17 @@ rules := []func(*dot.Graph) []Diagnostic{
 
 ## 4.8 Spec Section 8: Model Stylesheet
 
-### Spec Item
+Quick takeaway: this section explains how shared model settings can be applied to many nodes at once instead of repeated everywhere.
+
+### What The Spec Covers
 
 > `8.1 Overview`
 
-### Explanation
+### In Plain English
 
 The stylesheet lets a graph centralize model/provider choices rather than repeating them on every node.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/transform/transforms.go`
 
@@ -2886,21 +2932,21 @@ func (t *StylesheetApplication) Apply(graph *dot.Graph) {
 }
 ```
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `8.2 Stylesheet Grammar`
 
-### Explanation
+### In Plain English
 
 The spec defines a small CSS-like rule format.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/stylesheet/stylesheet.go`
 
@@ -2930,23 +2976,23 @@ func Parse(source string) []Rule {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - repeatedly parse `selector { declarations }`
 - selectors and properties become a typed `Rule`
 - grammar is intentionally simple and purpose-built
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `8.3 Selectors and Specificity`
 
-### Explanation
+### In Plain English
 
 The spec allows:
 
@@ -2955,7 +3001,7 @@ The spec allows:
 - `#id`
 - and selector precedence
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/stylesheet/stylesheet.go`
 
@@ -2987,26 +3033,26 @@ func matches(selector string, node *dot.Node) bool {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - specificity is encoded numerically
 - selector matching supports wildcard, node ID, class, and shape fallback
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `8.4 Recognized Properties`
 
-### Explanation
+### In Plain English
 
 The spec expects stylesheet properties such as model/provider-related settings.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 Closest implementation:
 
@@ -3018,7 +3064,7 @@ for key, val := range rule.Properties {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - this implementation is intentionally generic
 - it does not hardcode a small whitelist of recognized properties
@@ -3026,21 +3072,21 @@ for key, val := range rule.Properties {
 
 That is flexible, but slightly looser than a stricter spec-driven property contract.
 
-### Status
+### Current Status
 
 `Partially implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `8.5 Application Order`
 
-### Explanation
+### In Plain English
 
 Stylesheet order and specificity determine which rule wins.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/stylesheet/stylesheet.go`
 
@@ -3061,26 +3107,26 @@ for spec := 0; spec <= 2; spec++ {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - rules are reapplied in specificity order
 - later, more specific rules override earlier, broader ones
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `8.6 Example`
 
-### Explanation
+### In Plain English
 
 The spec includes example stylesheet declarations to make the model concrete.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `README.md`
 
@@ -3094,7 +3140,7 @@ graph [
 ]
 ```
 
-### Status
+### Current Status
 
 `Implemented`
 
@@ -3102,15 +3148,17 @@ graph [
 
 ## 4.9 Spec Section 9: Transforms and Extensibility
 
-### Spec Item
+Quick takeaway: this section explains how the graph can be adjusted before execution and where new capabilities can be added later.
+
+### What The Spec Covers
 
 > `9.1 AST Transforms`
 
-### Explanation
+### In Plain English
 
 Transforms let you modify the parsed graph before validation or execution.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/transform/transforms.go`
 
@@ -3120,27 +3168,27 @@ type Transform interface {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - transform API is intentionally tiny
 - a transform is just a graph mutation step
 - that makes pre-execution rewrites easy to reason about
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `9.2 Built-In Transforms`
 
-### Explanation
+### In Plain English
 
 The spec expects some built-in transforms to exist out of the box.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/transform/transforms.go`
 
@@ -3153,7 +3201,7 @@ transforms := []transform.Transform{
 transform.ApplyAll(graph, transforms)
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - custom variables first
 - built-in `$goal` expansion second
@@ -3161,21 +3209,21 @@ transform.ApplyAll(graph, transforms)
 
 That ordering matters because later phases rely on a fully materialized graph.
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `9.3 Custom Transforms`
 
-### Explanation
+### In Plain English
 
 Users should be able to add their own graph rewriting steps.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/transform/transforms.go`
 
@@ -3187,27 +3235,27 @@ func ApplyAll(graph *dot.Graph, transforms []Transform) {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - custom transforms are supported structurally
 - the CLI currently hardcodes the built-in list
 - but the engine itself is transform-agnostic
 
-### Status
+### Current Status
 
 `Partially implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `9.4 Pipeline Composition`
 
-### Explanation
+### In Plain English
 
 The spec discusses composing or nesting pipelines.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 Closest implementation: manager-loop stub only.
 
@@ -3222,26 +3270,26 @@ func (h *ManagerLoopHandler) Execute(node *dot.Node, ctx *engine.Context, graph 
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - there is no actual child-pipeline composition feature yet
 - the type exists as a placeholder extension point
 
-### Status
+### Current Status
 
 `Not implemented in this repository`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `9.5 HTTP Server Mode`
 
-### Explanation
+### In Plain English
 
 The spec discusses exposing pipeline execution through an HTTP server.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 Evidence that the current repo is CLI-only:
 
@@ -3255,26 +3303,26 @@ func main() {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - both entrypoints call `cli.Main()`
 - there is no HTTP server package, router, or API transport for pipeline execution
 
-### Status
+### Current Status
 
 `Not implemented in this repository`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `9.6 Observability and Events`
 
-### Explanation
+### In Plain English
 
 The spec expects structured runtime events so execution can be observed externally.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/event/event.go`
 
@@ -3310,27 +3358,27 @@ func (e *Emitter) Emit(evt Event) {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - events are typed and timestamped
 - handlers can subscribe to events
 - CLI output is implemented as an event subscriber
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `9.7 Tool Call Hooks`
 
-### Explanation
+### In Plain English
 
 The spec mentions hooks around tool calls for extra observability or policy control.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 Closest implementation: `ToolHandler` itself.
 
@@ -3341,12 +3389,12 @@ func runWithTimeout(command string, timeout time.Duration) ([]byte, error) {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - tool execution exists
 - but there is no before/after hook API surrounding tool invocation
 
-### Status
+### Current Status
 
 `Not implemented in this repository`
 
@@ -3354,15 +3402,17 @@ func runWithTimeout(command string, timeout time.Duration) ([]byte, error) {
 
 ## 4.10 Spec Section 10: Condition Expression Language
 
-### Spec Item
+Quick takeaway: this section explains the small rule language used to decide whether an edge should be taken.
+
+### What The Spec Covers
 
 > `10.1 Overview`
 
-### Explanation
+### In Plain English
 
 Conditions let edges become executable guards instead of passive connections.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/engine/condition.go`
 
@@ -3387,17 +3437,17 @@ func EvaluateCondition(condition string, outcome *Outcome, ctx *Context) bool {
 }
 ```
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `10.2 Grammar`
 
-### Explanation
+### In Plain English
 
 The grammar is intentionally tiny:
 
@@ -3406,7 +3456,7 @@ The grammar is intentionally tiny:
 - conjunction
 - truthy bare keys
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/engine/condition.go`
 
@@ -3426,23 +3476,23 @@ func evaluateClause(clause string, outcome *Outcome, ctx *Context) bool {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - `!=` has priority over `=`
 - bare keys are treated as truthy checks
 - the evaluator is deliberately small and deterministic
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `10.3 Semantics`
 
-### Explanation
+### In Plain English
 
 A condition is evaluated against runtime data:
 
@@ -3450,7 +3500,7 @@ A condition is evaluated against runtime data:
 - preferred label
 - context values
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/engine/condition.go`
 
@@ -3482,45 +3532,45 @@ func resolveKey(key string, outcome *Outcome, ctx *Context) string {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - special outcome fields are handled explicitly
 - `context.foo` works
 - plain `foo` falls back to the same context store
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `10.4 Variable Resolution`
 
-### Explanation
+### In Plain English
 
 The spec defines how names inside condition expressions map to runtime values.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 Same `resolveKey()` implementation as above.
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `10.5 Evaluation`
 
-### Explanation
+### In Plain English
 
 Evaluation should be deterministic and easy to audit.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/engine/condition.go`
 
@@ -3538,23 +3588,23 @@ for _, clause := range clauses {
 return true
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - `&&` is the only logical combinator implemented
 - evaluation short-circuits on the first false clause
 - simple grammar keeps runtime behavior transparent
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `10.6 Examples`
 
-### Explanation
+### In Plain English
 
 The spec includes examples like:
 
@@ -3562,7 +3612,7 @@ The spec includes examples like:
 - `outcome!=fail`
 - `context.loop_state!=exhausted`
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `examples/gorestspec/init_rest_app.dot`
 
@@ -3571,21 +3621,21 @@ check -> review     [label="Yes", condition="outcome=success"]
 check -> write_main [label="No",  condition="outcome!=success"]
 ```
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `10.7 Extended Operators (Future)`
 
-### Explanation
+### In Plain English
 
 The spec explicitly marks richer operators as future work.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/engine/condition.go`
 
@@ -3594,12 +3644,12 @@ File: `internal/engine/condition.go`
 // Clause:  key '=' value | key '!=' value
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - only the minimal operator set is implemented
 - there is no `||`, regex, numeric comparison, or grouping
 
-### Status
+### Current Status
 
 `Implemented as minimal subset`
 
@@ -3607,182 +3657,184 @@ File: `internal/engine/condition.go`
 
 ## 4.11 Spec Section 11: Definition of Done
 
-This section is best understood as a parity checklist.
+Quick takeaway: this section is a simple scorecard showing which major Attractor features this repo already has.
 
-### Spec Item
+This section is best read as a simple checklist: what is already done, what is partly done, and what is still missing.
+
+### What The Spec Covers
 
 > `11.1 DOT Parsing`
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 - parser exists
 - tests exist in `internal/dot/parser_test.go`
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `11.2 Validation and Linting`
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 - validator exists
 - lint rules exist
 - `validate` CLI command exists
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `11.3 Execution Engine`
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 - engine loop exists in `internal/engine/engine.go`
 - status files and checkpoints are persisted
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `11.4 Goal Gate Enforcement`
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 - implemented via `checkGoalGates()` and `handleGoalGates()`
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `11.5 Retry Logic`
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 - exponential retry exists
 - partial success exists
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `11.6 Node Handlers`
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 - all major built-in handlers are present
 - some advanced ones are stubs or partial
 
-### Status
+### Current Status
 
 `Partially implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `11.7 State and Context`
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 - context, outcome, checkpoint exist
 - artifact store abstraction is not fully generalized
 
-### Status
+### Current Status
 
 `Partially implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `11.8 Human-in-the-Loop`
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 - interviewer abstraction exists
 - console and auto-approve modes exist
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `11.9 Condition Expressions`
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 - minimal grammar fully implemented
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `11.10 Model Stylesheet`
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 - parsing and application exist
 - property validation is loose
 
-### Status
+### Current Status
 
 `Partially implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `11.11 Transforms and Extensibility`
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 - transform API exists
 - built-ins exist
 - external registration model is limited
 
-### Status
+### Current Status
 
 `Partially implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `11.12 Cross-Feature Parity Matrix`
 
-### Explanation
+### In Plain English
 
 The spec compares supported features across implementations.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 This repository effectively falls into this parity profile:
 
@@ -3794,21 +3846,21 @@ This repository effectively falls into this parity profile:
 - HTTP mode: absent
 - composition: absent
 
-### Status
+### Current Status
 
 `Partially implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `11.13 Integration Smoke Test`
 
-### Explanation
+### In Plain English
 
 The spec wants an end-to-end smoke test proving the overall flow works.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 Closest implementation:
 
@@ -3816,7 +3868,7 @@ Closest implementation:
 - `go test ./...` covers parser and engine logic
 - no single end-to-end integration test currently executes an example pipeline as a smoke test
 
-### Status
+### Current Status
 
 `Partially implemented`
 
@@ -3824,15 +3876,17 @@ Closest implementation:
 
 ## 4.12 Spec Appendices
 
-### Spec Item
+Quick takeaway: this section covers the supporting reference details such as attributes, status files, and error categories.
+
+### What The Spec Covers
 
 > `Appendix A: Complete Attribute Reference`
 
-### Explanation
+### In Plain English
 
 The appendices centralize the contract for graph, node, and edge attributes.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 The practical implementation lives in:
 
@@ -3849,35 +3903,35 @@ func (g *Graph) GraphAttr(key, defaultVal string) string { /* ... */ }
 func (e *Edge) Attr(key, defaultVal string) string { /* ... */ }
 ```
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `Appendix B: Shape-to-Handler-Type Mapping`
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 Already covered by `handler.ShapeToType`.
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `Appendix C: Status File Contract`
 
-### Explanation
+### In Plain English
 
 The spec wants stage status files to be machine-readable and stable.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 File: `internal/engine/logfiles.go`
 
@@ -3891,27 +3945,27 @@ func WriteStatusFile(stageDir string, outcome *Outcome) error {
 }
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - status files are JSON
 - they serialize the normalized `Outcome`
 - this keeps artifact inspection simple and stable
 
-### Status
+### Current Status
 
 `Implemented`
 
 ---
 
-### Spec Item
+### What The Spec Covers
 
 > `Appendix D: Error Categories`
 
-### Explanation
+### In Plain English
 
 The spec describes error families such as parse, validation, handler, and runtime errors.
 
-### Implementation in This Repo
+### Where It Lives In This Repo
 
 Representative examples:
 
@@ -3922,13 +3976,13 @@ return &Outcome{Status: StatusFail, FailureReason: err.Error()}
 return nil, fmt.Errorf("stage %q failed with no outgoing fail edge", node.ID)
 ```
 
-### Code Breakdown
+### Why It Works This Way
 
 - errors are wrapped with context
 - stage-level failures are encoded in `Outcome`
 - structural failures are returned as Go errors
 
-### Status
+### Current Status
 
 `Implemented`
 

@@ -88,7 +88,7 @@ func runCmd(progName string, args []string) {
 		fmt.Fprintf(os.Stderr, "Parse error: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("  Graph: %s (%d nodes, %d edges)\n", graph.Name, len(graph.Nodes), len(graph.Edges))
+	fmt.Printf("Graph: %s (%d nodes, %d edges)\n", graph.Name, len(graph.Nodes), len(graph.Edges))
 
 	// Apply transforms
 	transforms := []transform.Transform{
