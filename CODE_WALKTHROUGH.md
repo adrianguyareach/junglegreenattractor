@@ -42,6 +42,10 @@ Throughout this document, each spec section is handled using this pattern:
 
 That status is important. This repository is a strong CLI-first Attractor-style runner, but it does **not** implement every optional or future-facing part of the upstream specification.
 
+### Keeping this walkthrough in sync with the code
+
+Whenever the repository’s structure or behavior changes (new packages, renamed files, new CLI commands, engine or handler changes), **update this document in the same change** so paths, responsibilities, and reading order stay accurate. Treat `CODE_WALKTHROUGH.md` as part of the change, not an afterthought.
+
 ---
 
 ## 1. High-Level Overview
@@ -275,7 +279,7 @@ The `run` command performs the application bootstrap for a pipeline execution.
 
 **Implementation**
 
-File: `internal/cli/cli.go`  
+File: `internal/cli/run.go`  
 Function: `runCmd`
 
 ```go
@@ -3777,6 +3781,20 @@ This section now switches from spec mapping to architectural understanding.
 
 The CLI package is the interface layer. It is where users interact with the system.
 
+### Package layout (one file per command / concern)
+
+| File | Role |
+|------|------|
+| `cli.go` | `Main()` — argument routing only |
+| `usage.go` | Embedded `usage.md`, `printUsage` / `usageText`, `version` |
+| `run.go` | `runCmd`, `-var` flag type (`varFlags`), string helpers used by run output |
+| `validate.go` | `validateCmd` |
+| `inspect.go` | `inspectCmd` and run-directory reporting |
+| `list.go` | `listCmd` |
+| `graph.go` | `graphCmd` |
+
+This keeps each subcommand isolated (SOLID-friendly) and avoids a single oversized `cli.go`.
+
 ### Responsibilities
 
 - parse commands and flags
@@ -3792,12 +3810,12 @@ The CLI package is the interface layer. It is where users interact with the syst
 
 ### Key functions
 
-- `Main()`
-- `runCmd()`
-- `validateCmd()`
-- `inspectCmd()`
-- `listCmd()`
-- `graphCmd()`
+- `Main()` (`cli.go`)
+- `runCmd()` (`run.go`)
+- `validateCmd()` (`validate.go`)
+- `inspectCmd()` (`inspect.go`)
+- `listCmd()` (`list.go`)
+- `graphCmd()` (`graph.go`)
 
 ### Why it is designed this way
 
@@ -4249,7 +4267,7 @@ If you wanted to rebuild this from scratch, implement in this order:
 9. **CLI**
    - run
    - validate
-   - inspect
+   - inspect, list, graph
 
 This repository is a very good reference for that build order because its architecture already follows that sequence.
 
@@ -4268,7 +4286,9 @@ state is persisted as structured artifacts
 
 The most important files in this repository are:
 
-- `internal/cli/cli.go` — composition root for CLI execution
+- `internal/cli/cli.go` — CLI entry routing (`Main`)
+- `internal/cli/run.go` — full `run` command: parse flags, transforms, validate, wire engine
+- `internal/cli/usage.go` — help text and version string
 - `internal/dot/parser.go` — turns DOT into executable structure
 - `internal/transform/transforms.go` — prepares the graph
 - `internal/validate/validate.go` and `rules.go` — protects execution
@@ -4281,7 +4301,7 @@ The most important files in this repository are:
 If you only study five things, study these in order:
 
 1. `examples/gorestspec/init_rest_app.dot`
-2. `internal/cli/cli.go`
+2. `internal/cli/cli.go` then `internal/cli/run.go` (routing vs. run composition)
 3. `internal/dot/parser.go`
 4. `internal/engine/engine.go`
 5. `internal/engine/edge.go`
@@ -4296,7 +4316,7 @@ If you want to continue learning by reading code in the IDE, use this order:
 
 1. `examples/gorestspec/init_rest_app.dot`
 2. `cmd/jga/main.go`
-3. `internal/cli/cli.go`
+3. `internal/cli/cli.go` → `internal/cli/run.go` → `internal/cli/usage.go` → other `internal/cli/*.go` as needed
 4. `internal/dot/ast.go`
 5. `internal/dot/parser.go`
 6. `internal/transform/transforms.go`
