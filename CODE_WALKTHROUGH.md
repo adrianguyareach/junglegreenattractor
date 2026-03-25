@@ -539,23 +539,15 @@ You do **not** need to understand the whole upstream spec before reading this se
 ### Flow map (Section 4 overview)
 
 ```mermaid
-flowchart TD
-  A[DOT file] --> B[Parse DOT
-internal/dot] 
-  B --> C[Transforms
-internal/transform]
-  C --> D[Validate
-internal/validate]
-  D --> E[Run engine
-internal/engine]
-  E --> F[Handlers
-internal/handler]
-  E --> G[Artifacts
-.jgattractorlogs]
-  E --> H[Events
-internal/event]
-  H --> I[CLI prints progress
-internal/cli]
+flowchart LR
+  A[DOT file] --> B[Parse DOT<br/>internal/dot]
+  B --> C[Transforms<br/>internal/transform]
+  C --> D[Validate<br/>internal/validate]
+  D --> E[Run engine<br/>internal/engine]
+  E --> F[Handlers<br/>internal/handler]
+  E --> G[Artifacts<br/>.jgattractorlogs]
+  E --> H[Events<br/>internal/event]
+  H --> I[CLI prints progress<br/>internal/cli]
 ```
 
 
@@ -4000,9 +3992,8 @@ Closest implementation:
 ### Flow map (run artifacts on disk)
 
 ```mermaid
-flowchart TD
-  A[Logs root
-.jgattractorlogs/run_name] --> B[manifest.json]
+flowchart LR
+  A[Logs root<br/>.jgattractorlogs/run_name] --> B[manifest.json]
   A --> C[checkpoint.json]
   A --> D[001_stage_id]
   D --> E[status.json]
@@ -4123,17 +4114,13 @@ return nil, fmt.Errorf("stage %q failed with no outgoing fail edge", node.ID)
 This is the complete flow across everything in Section 4, from a `.dot` file to a finished run on disk.
 
 ```mermaid
-flowchart TD
+flowchart LR
   A[CLI: jga run pipeline.dot] --> B[Read DOT file]
-  B --> C[Parse DOT
-lexer + parser]
-  C --> D[Transforms
-vars + stylesheet]
-  D --> E[Validate
-rules produce diagnostics]
+  B --> C[Parse DOT<br/>lexer + parser]
+  C --> D[Transforms<br/>vars + stylesheet]
+  D --> E[Validate<br/>rules produce diagnostics]
   E --> F{Errors?}
-  F -- yes --> G[Print diagnostics
-exit non-zero]
+  F -- yes --> G[Print diagnostics<br/>exit non-zero]
   F -- no --> H[Engine.Run]
   H --> I[Emit pipeline.started]
   I --> J[Loop: execute node]
@@ -4152,8 +4139,7 @@ exit non-zero]
   T -- yes --> V[Success outcome]
   U --> W[CLI prints summary]
   V --> W
-  W --> X[Inspect later: jga inspect
-reads artifacts]
+  W --> X[Inspect later: jga inspect<br/>reads artifacts]
 ```
 
 ### Execution lifecycle notes (junior-friendly)
