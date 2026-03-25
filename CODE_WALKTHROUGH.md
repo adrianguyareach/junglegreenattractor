@@ -47,6 +47,7 @@ It is written for a developer who wants to go from:
 &nbsp;&nbsp;&nbsp;&nbsp;[4.10 Spec Section 10: Condition Expression Language](#410-spec-section-10-condition-expression-language)<br/>
 &nbsp;&nbsp;&nbsp;&nbsp;[4.11 Spec Section 11: Definition of Done](#411-spec-section-11-definition-of-done)<br/>
 &nbsp;&nbsp;&nbsp;&nbsp;[4.12 Spec Appendices](#412-spec-appendices)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;[4.X Full end-to-end execution lifecycle (summary)](#4x-full-end-to-end-execution-lifecycle-summary)<br/>
 [5. Key Components Deep Dive](#5-key-components-deep-dive)<br/>
 &nbsp;&nbsp;&nbsp;&nbsp;[5.1 `internal/cli`](#51-internalcli)<br/>
 &nbsp;&nbsp;&nbsp;&nbsp;[5.2 `internal/dot`](#52-internaldot)<br/>
@@ -535,6 +536,29 @@ You do **not** need to understand the whole upstream spec before reading this se
 | Fidelity      | How much detail is kept when carrying context forward |
 | Extensibility | How easy it is to add new behavior later              |
 
+### Flow map (Section 4 overview)
+
+```mermaid
+flowchart TD
+  A[DOT file] --> B[Parse DOT
+internal/dot] 
+  B --> C[Transforms
+internal/transform]
+  C --> D[Validate
+internal/validate]
+  D --> E[Run engine
+internal/engine]
+  E --> F[Handlers
+internal/handler]
+  E --> G[Artifacts
+.jgattractorlogs]
+  E --> H[Events
+internal/event]
+  H --> I[CLI prints progress
+internal/cli]
+```
+
+
 The upstream Attractor spec is broad. This repository implements a large, useful subset of it, especially:
 
 - DOT parsing
@@ -568,6 +592,19 @@ For implementation-level guidance on how to close these gaps, see `CODERGEN.md`,
 ---
 
 ## 4.1 Spec Section 1: Overview and Goals
+
+### Flow map (why Attractor exists)
+
+```mermaid
+flowchart TD
+  A[Workflow is a graph] --> B[Nodes are stages]
+  A --> C[Edges control routing]
+  B --> D[Handlers do work]
+  C --> E[Engine chooses next edge]
+  D --> F[Outcome returned]
+  F --> E
+  E --> G[Run completes at exit]
+```
 
 Quick takeaway: this section explains the big ideas behind Attractor and shows how this repository turns those ideas into a real Go application.
 
@@ -739,6 +776,22 @@ type CodergenBackend interface {
 ---
 
 ## 4.2 Spec Section 2: DOT DSL Schema
+
+### Flow map (DOT becomes a Graph object)
+
+```mermaid
+flowchart TD
+  A[DOT text] --> B[Lexer
+internal/dot/lexer.go]
+  B --> C[Tokens]
+  C --> D[Parser
+internal/dot/parser.go]
+  D --> E[Graph AST
+Graph/Node/Edge]
+  E --> F[Defaults applied
+node + edge defaults]
+  E --> G[Subgraphs captured]
+```
 
 Quick takeaway: this section explains how the `.dot` file format is parsed and what parts of that format this repo currently supports.
 
@@ -1307,6 +1360,21 @@ review -> validate  [label="[F] Fix issues"]
 
 ## 4.3 Spec Section 3: Pipeline Execution Engine
 
+### Flow map (engine at a glance)
+
+```mermaid
+flowchart TD
+  A[Runner.Run] --> B[runLoop]
+  B --> C[executeStage]
+  C --> D[retry policy]
+  C --> E[recordOutcome]
+  B --> F[selectEdge]
+  F --> B
+  B --> G[terminal node]
+  G --> H[goal gate check]
+  H --> I[return outcome]
+```
+
 Quick takeaway: this section explains the runtime loop, which is the part of the system that actually moves from one node to the next.
 
 ### What The Spec Covers
@@ -1818,6 +1886,21 @@ flowchart TD
 
 ## 4.4 Spec Section 4: Node Handlers
 
+### Flow map (how a node is executed)
+
+```mermaid
+flowchart TD
+  A[Engine at node] --> B[Registry resolves handler]
+  B --> C{Node has type?}
+  C -- yes --> D[Use type handler]
+  C -- no --> E[Map shape to type]
+  E --> F[Use shape handler]
+  D --> G[Handler.Execute]
+  F --> G
+  G --> H[Outcome]
+  H --> I[Engine records + routes]
+```
+
 Quick takeaway: this section explains what each node type actually does when the engine reaches it.
 
 ### What The Spec Covers
@@ -2324,6 +2407,19 @@ func (r *Registry) Register(typeStr string, h Handler) {
 
 ## 4.5 Spec Section 5: State and Context
 
+### Flow map (what gets remembered)
+
+```mermaid
+flowchart TD
+  A[Stage executes] --> B[Outcome]
+  B --> C[Context updates]
+  C --> D[Context stored in memory]
+  B --> E[status.json written]
+  D --> F[checkpoint.json written]
+  E --> G[inspectable artifacts]
+  F --> G
+```
+
 Quick takeaway: this section explains what data the system remembers while a pipeline is running and after it finishes.
 
 ### What The Spec Covers
@@ -2576,6 +2672,18 @@ if err := os.MkdirAll(stageDir, dirPermissions); err != nil {
 
 ## 4.6 Spec Section 6: Human-in-the-Loop (Interviewer Pattern)
 
+### Flow map (human gate)
+
+```mermaid
+flowchart TD
+  A[wait.human node] --> B[Build choices from outgoing edges]
+  B --> C[Interviewer.Ask]
+  C --> D{Answer}
+  D -- approve --> E[Suggest next node]
+  D -- timeout --> F[Default choice or retry]
+  D -- skipped --> G[Fail outcome]
+```
+
 Quick takeaway: this section explains how the workflow asks a human for input without hardcoding terminal I/O into the engine.
 
 ### What The Spec Covers
@@ -2766,6 +2874,18 @@ func (h *WaitForHumanHandler) handleTimeout(node *dot.Node) (*engine.Outcome, er
 
 ## 4.7 Spec Section 7: Validation and Linting
 
+### Flow map (fail fast before execution)
+
+```mermaid
+flowchart TD
+  A[Graph AST] --> B[Run validation rules]
+  B --> C[Diagnostics list]
+  C --> D{Any errors?}
+  D -- yes --> E[Stop run
+print errors]
+  D -- no --> F[Allow execution]
+```
+
 Quick takeaway: this section explains how the repo catches bad pipelines early, before execution starts.
 
 ### What The Spec Covers
@@ -2908,6 +3028,16 @@ rules := []func(*dot.Graph) []Diagnostic{
 ---
 
 ## 4.8 Spec Section 8: Model Stylesheet
+
+### Flow map (apply shared settings)
+
+```mermaid
+flowchart TD
+  A[Graph has model_stylesheet] --> B[Parse rules]
+  B --> C[Match selector to nodes]
+  C --> D[Apply attributes]
+  D --> E[Nodes now have defaults]
+```
 
 Quick takeaway: this section explains how shared model settings can be applied to many nodes at once instead of repeated everywhere.
 
@@ -3139,6 +3269,16 @@ graph [
 ---
 
 ## 4.9 Spec Section 9: Transforms and Extensibility
+
+### Flow map (prepare graph before validate/run)
+
+```mermaid
+flowchart TD
+  A[Parsed graph] --> B[Custom var expansion]
+  B --> C[Built-in var expansion]
+  C --> D[Stylesheet application]
+  D --> E[Validated graph]
+```
 
 Quick takeaway: this section explains how the graph can be adjusted before execution and where new capabilities can be added later.
 
@@ -3379,6 +3519,17 @@ func runWithTimeout(command string, timeout time.Duration) ([]byte, error) {
 ---
 
 ## 4.10 Spec Section 10: Condition Expression Language
+
+### Flow map (edge condition evaluation)
+
+```mermaid
+flowchart TD
+  A[Edge condition string] --> B[Split by AND]
+  B --> C[Evaluate each clause]
+  C --> D{All true?}
+  D -- yes --> E[Edge eligible]
+  D -- no --> F[Edge not eligible]
+```
 
 Quick takeaway: this section explains the small rule language used to decide whether an edge should be taken.
 
@@ -3621,6 +3772,16 @@ File: `internal/engine/condition.go`
 
 ## 4.11 Spec Section 11: Definition of Done
 
+### Flow map (feature scorecard)
+
+```mermaid
+flowchart TD
+  A[Feature] --> B{Status}
+  B -- Implemented --> C[Works today]
+  B -- Partially --> D[Works in subset]
+  B -- Not implemented --> E[Planned work]
+```
+
 Quick takeaway: this section is a simple scorecard showing which major Attractor features this repo already has.
 
 This section is best read as a simple checklist: what is already done, what is partly done, and what is still missing.
@@ -3836,6 +3997,20 @@ Closest implementation:
 
 ## 4.12 Spec Appendices
 
+### Flow map (run artifacts on disk)
+
+```mermaid
+flowchart TD
+  A[Logs root
+.jgattractorlogs/run_name] --> B[manifest.json]
+  A --> C[checkpoint.json]
+  A --> D[001_stage_id]
+  D --> E[status.json]
+  D --> F[prompt.md]
+  D --> G[response.md]
+  D --> H[tool output]
+```
+
 Quick takeaway: this section covers the supporting reference details such as attributes, status files, and error categories.
 
 ### What The Spec Covers
@@ -3942,6 +4117,55 @@ return nil, fmt.Errorf("stage %q failed with no outgoing fail edge", node.ID)
 
 ---
 
+
+## 4.X Full end-to-end execution lifecycle (summary)
+
+This is the complete flow across everything in Section 4, from a `.dot` file to a finished run on disk.
+
+```mermaid
+flowchart TD
+  A[CLI: jga run pipeline.dot] --> B[Read DOT file]
+  B --> C[Parse DOT
+lexer + parser]
+  C --> D[Transforms
+vars + stylesheet]
+  D --> E[Validate
+rules produce diagnostics]
+  E --> F{Errors?}
+  F -- yes --> G[Print diagnostics
+exit non-zero]
+  F -- no --> H[Engine.Run]
+  H --> I[Emit pipeline.started]
+  I --> J[Loop: execute node]
+  J --> K[Resolve handler]
+  K --> L[Handler.Execute]
+  L --> M[Outcome]
+  M --> N[Retry if needed]
+  M --> O[Write status.json]
+  O --> P[Write checkpoint.json]
+  M --> Q[Select next edge]
+  Q --> J
+  J --> R[Reach terminal node]
+  R --> S[Check goal gates]
+  S --> T{Gates ok?}
+  T -- no --> U[Fail outcome]
+  T -- yes --> V[Success outcome]
+  U --> W[CLI prints summary]
+  V --> W
+  W --> X[Inspect later: jga inspect
+reads artifacts]
+```
+
+### Execution lifecycle notes (junior-friendly)
+
+- **Parsing** turns text into a `Graph` object.
+- **Transforms** rewrite the graph so later phases do less work.
+- **Validation** catches broken workflows before we run them.
+- **Engine** runs a loop: execute node, record results, pick next node.
+- **Handlers** do the real work (codergen, tool command, human gate).
+- **Outcomes** are the common result format for every stage.
+- **Artifacts** (`manifest.json`, `status.json`, `checkpoint.json`) make runs easy to debug and inspect.
+- **Goal gates** prevent “green” runs when a critical stage failed.
 ## 5. Key Components Deep Dive
 
 This section now switches from spec mapping to architectural understanding.
