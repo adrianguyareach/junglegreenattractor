@@ -1367,6 +1367,18 @@ func (r *Runner) Run() (*Outcome, error) {
 
 `Implemented`
 
+```mermaid
+flowchart TD
+  A[Runner.Run()] --> B[NewContext()
++ mirrorGraphAttributes]
+  B --> C[Prepare logs root
+MkdirAll + writeManifest()]
+  C --> D[Emit: pipeline.started]
+  D --> E[findStartNode()]
+  E --> F[runLoop(ctx, startNode)]
+  F --> G[Return lastOutcome]
+```
+
 ---
 
 ### What The Spec Covers
@@ -1430,6 +1442,26 @@ for {
 
 `Implemented`
 
+```mermaid
+flowchart TD
+  A[runLoop: currentNode = startNode] --> B{isTerminal(currentNode)?}
+  B -- yes --> C[handleGoalGates(outcomes)]
+  C --> D{goal gates satisfied?}
+  D -- yes --> Z[break]
+  D -- no --> E[return Fail Outcome]
+  B -- no --> F[stepIndex++
+stageDir = LogsRoot/###_nodeID]
+  F --> H[executeStage(currentNode, ctx, stageDir)]
+  H --> I[completedNodes += nodeID]
+  I --> J[nodeOutcomes[nodeID] = outcome]
+  J --> K[recordOutcome(...)]
+  K --> L[nextNode, done = advance(node, outcome, ctx)]
+  L --> M{done?}
+  M -- yes --> Z
+  M -- no --> A
+  Z --> N[Emit: pipeline.completed]
+```
+
 ---
 
 ### What The Spec Covers
@@ -1478,6 +1510,21 @@ This closely mirrors the upstream spec and is one of the cleanest parts of the i
 
 `Implemented`
 
+```mermaid
+flowchart TD
+  A[selectEdge(node,outcome,ctx,graph)] --> B[edges = graph.OutgoingEdges(node.ID)]
+  B --> C{edges empty?}
+  C -- yes --> Z[return nil]
+  C -- no --> D{matchByCondition true?}
+  D -- yes --> R1[return that edge]
+  D -- no --> E{matchByPreferredLabel true?}
+  E -- yes --> R2[return that edge]
+  E -- no --> F{matchBySuggestedIDs true?}
+  F -- yes --> R3[return that edge]
+  F -- no --> G[matchByWeightOrLexical]
+  G --> R4[return selected edge]
+```
+
 ---
 
 ### What The Spec Covers
@@ -1523,6 +1570,20 @@ func checkGoalGates(graph *dot.Graph, outcomes map[string]*Outcome) (bool, *dot.
 ### Current Status
 
 `Implemented`
+
+```mermaid
+flowchart TD
+  A[At terminal node] --> B[checkGoalGates(graph, nodeOutcomes)]
+  B --> C{Any goal_gate=true failed?}
+  C -- yes --> D[failedGate = that node]
+  D --> E[engine.handleGoalGates()]
+  E --> F[retryTarget = getRetryTarget(failedGate)]
+  F --> G{retryTarget exists in graph?}
+  G -- yes --> H[allow exit (current code returns nil)]
+  G -- no --> I[return Fail Outcome
+Goal gate unsatisfied]
+  C -- no --> J[allow exit (break)]
+```
 
 ---
 
@@ -1576,6 +1637,24 @@ for attempt := 1; attempt <= policy.maxAttempts; attempt++ {
 
 `Implemented`
 
+```mermaid
+flowchart TD
+  A[executeWithRetry(node, policy)] --> B[for attempt = 1..maxAttempts]
+  B --> C[outcome = safeExecute(...)]
+  C --> D{Success or PartialSuccess?}
+  D -- yes --> E[reset nodeRetries
+return outcome]
+  D -- no --> F{outcome.Status == Fail?}
+  F -- yes --> G[return Fail outcome]
+  F -- no --> H{attempt < maxAttempts?}
+  H -- yes --> I[nodeRetries[node]++
++ sleepWithRetryEvent
+continue]
+  H -- no --> J{allow_partial == true?}
+  J -- yes --> K[return PartialSuccess]
+  J -- no --> L[return Fail: max retries exceeded]
+```
+
 ---
 
 ### What The Spec Covers
@@ -1622,6 +1701,23 @@ func buildRetryPolicy(node *dot.Node, graph *dot.Graph) retryPolicy {
 
 `Implemented`
 
+```mermaid
+flowchart TD
+  A[buildRetryPolicy(node, graph)] --> B[maxRetries = 0]
+  B --> C{node has max_retries?}
+  C -- yes --> D[maxRetries = node.max_retries]
+  C -- no --> E{maxRetries == 0?}
+  E -- yes --> F{graph has default_max_retry?}
+  F -- yes --> G[maxRetries = graph.default_max_retry]
+  F -- no --> H[maxRetries stays 0]
+  D --> I
+  H --> I
+  G --> I
+  I[return retryPolicy:
+maxAttempts = maxRetries + 1
++ delays/backoff/maxDelay/jitter]
+```
+
 ---
 
 ### What The Spec Covers
@@ -1659,6 +1755,18 @@ func (r *Runner) advance(node *dot.Node, outcome *Outcome, ctx *Context) (*dot.N
 ### Current Status
 
 `Implemented`
+
+```mermaid
+flowchart TD
+  A[advance(node, outcome, ctx)] --> B[nextEdge = selectEdge(...)]
+  B --> C{nextEdge == nil?}
+  C -- yes --> D{outcome.Status == Fail?}
+  D -- yes --> E[return hard error
+no outgoing fail edge]
+  D -- no --> F[return done=true
+(success ends run)]
+  C -- no --> G[route to nextNode]
+```
 
 ---
 
@@ -1703,6 +1811,19 @@ func (h *ParallelHandler) Execute(node *dot.Node, ctx *engine.Context, graph *do
 ### Current Status
 
 `Partially implemented`
+
+```mermaid
+flowchart TD
+  A[ParallelHandler.Execute] --> B[edges = graph.OutgoingEdges(node.ID)]
+  B --> C{edges empty?}
+  C -- yes --> D[return Success:
+"No branches to execute"]
+  C -- no --> E[for each edge:
+ctx.Set(parallel.branch.<to>, pending)]
+  E --> F[return Success:
+"sequential simulation"]
+  F --> G[No goroutines launched yet]
+```
 
 ---
 

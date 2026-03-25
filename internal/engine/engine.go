@@ -84,7 +84,7 @@ func (r *Runner) runLoop(ctx *Context, startNode *dot.Node) (*Outcome, error) {
 
 	for {
 		if isTerminal(currentNode) {
-			if failed := r.handleGoalGates(currentNode, nodeOutcomes); failed != nil {
+			if failed := r.handleGoalGates(nodeOutcomes); failed != nil {
 				return failed, nil
 			}
 			break
@@ -129,7 +129,7 @@ func (r *Runner) runLoop(ctx *Context, startNode *dot.Node) (*Outcome, error) {
 	return lastOutcome, nil
 }
 
-func (r *Runner) handleGoalGates(node *dot.Node, outcomes map[string]*Outcome) *Outcome {
+func (r *Runner) handleGoalGates(outcomes map[string]*Outcome) *Outcome {
 	gateOK, failedGate := checkGoalGates(r.Graph, outcomes)
 	if gateOK || failedGate == nil {
 		return nil

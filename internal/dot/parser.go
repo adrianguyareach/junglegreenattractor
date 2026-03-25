@@ -43,13 +43,6 @@ func (p *parser) expect(kind tokenKind) (token, error) {
 	return t, nil
 }
 
-func (p *parser) peek() token {
-	if p.pos+1 < len(p.tokens) {
-		return p.tokens[p.pos+1]
-	}
-	return token{kind: tokEOF}
-}
-
 func (p *parser) parseGraph() (*Graph, error) {
 	if _, err := p.expect(tokDigraph); err != nil {
 		return nil, fmt.Errorf("expected 'digraph': %w", err)
