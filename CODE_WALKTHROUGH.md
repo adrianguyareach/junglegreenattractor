@@ -550,7 +550,6 @@ flowchart LR
   H --> I[CLI prints progress<br/>internal/cli]
 ```
 
-
 The upstream Attractor spec is broad. This repository implements a large, useful subset of it, especially:
 
 - DOT parsing
@@ -1425,8 +1424,6 @@ func (r *Runner) Run() (*Outcome, error) {
 
 ### Current Status
 
-
-
 `Implemented`
 
 ```mermaid
@@ -1500,8 +1497,6 @@ for {
 
 ### Current Status
 
-
-
 `Implemented`
 
 ```mermaid
@@ -1565,8 +1560,6 @@ This closely mirrors the upstream spec and is one of the cleanest parts of the i
 
 ### Current Status
 
-
-
 `Implemented`
 
 ```mermaid
@@ -1625,8 +1618,6 @@ func checkGoalGates(graph *dot.Graph, outcomes map[string]*Outcome) (bool, *dot.
 - if any goal gate failed, block exit
 
 ### Current Status
-
-
 
 `Implemented`
 
@@ -1691,8 +1682,6 @@ for attempt := 1; attempt <= policy.maxAttempts; attempt++ {
 
 ### Current Status
 
-
-
 `Implemented`
 
 ```mermaid
@@ -1754,8 +1743,6 @@ func buildRetryPolicy(node *dot.Node, graph *dot.Graph) retryPolicy {
 
 ### Current Status
 
-
-
 `Implemented`
 
 ```mermaid
@@ -1804,8 +1791,6 @@ func (r *Runner) advance(node *dot.Node, outcome *Outcome, ctx *Context) (*dot.N
 - so failure can be modeled in the graph, but missing failure handling is treated as a problem
 
 ### Current Status
-
-
 
 `Implemented`
 
@@ -1860,8 +1845,6 @@ func (h *ParallelHandler) Execute(node *dot.Node, ctx *engine.Context, graph *do
 - but the implementation is explicit that this is **sequential simulation**, not true concurrency
 
 ### Current Status
-
-
 
 `Partially implemented`
 
@@ -4108,13 +4091,12 @@ return nil, fmt.Errorf("stage %q failed with no outgoing fail edge", node.ID)
 
 ---
 
-
 ## 4.X Full end-to-end execution lifecycle (summary)
 
 This is the complete flow across everything in Section 4, from a `.dot` file to a finished run on disk.
 
 ```mermaid
-flowchart LR
+flowchart TD
   A[CLI: jga run pipeline.dot] --> B[Read DOT file]
   B --> C[Parse DOT<br/>lexer + parser]
   C --> D[Transforms<br/>vars + stylesheet]
@@ -4152,6 +4134,7 @@ flowchart LR
 - **Outcomes** are the common result format for every stage.
 - **Artifacts** (`manifest.json`, `status.json`, `checkpoint.json`) make runs easy to debug and inspect.
 - **Goal gates** prevent “green” runs when a critical stage failed.
+
 ## 5. Key Components Deep Dive
 
 This section now switches from spec mapping to architectural understanding.
